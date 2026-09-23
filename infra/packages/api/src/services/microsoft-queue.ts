@@ -34,6 +34,8 @@ import {
   getMailboxMessage,
   getMessageAttachmentContent,
 } from "./microsoft-outlook-graph";
+import { isMicrosoftDailyJobBudgetExceeded } from "./observability/runaway-limits";
+import { logInfraEvent } from "./observability/structured-log";
 
 export const MICROSOFT_KNOWLEDGE_INGEST_QUEUE = "microsoft-knowledge-ingest";
 export const MICROSOFT_KNOWLEDGE_INGEST_DLQ = "microsoft-knowledge-ingest-dlq";
@@ -225,7 +227,18 @@ export async function createMicrosoftFileJob(
     attachmentId?: string | null;
     sendToQueue?: boolean;
   },
-): Promise<{ jobId: string; enqueued: boolean; duplicate: boolean }> {
+): Promise<{ jobId: string; enqueued: boolean; duplicate: boolean; limited?: boolean }> {
+  if (await isMicrosoftDailyJobBudgetExceeded(env.DB, input.companyId)) {
+    logInfraEvent({
+      level: "warn",
+      event: "microsoft.job_budget_exceeded",
+      companyId: input.companyId,
+      connector: "microsoft_365",
+      status: "limited",
+    });
+    return { jobId: "", enqueued: false, duplicate: false, limited: true };
+  }
+
   const existingActive = await env.DB.prepare(
     `SELECT id FROM microsoft_file_jobs
      WHERE company_id = ? AND source_id = ? AND external_item_id = ?
@@ -292,6 +305,7 @@ export async function processMicrosoftFileJob(
   message: MicrosoftFileJobMessage,
   options?: { deadLetter?: boolean },
 ): Promise<void> {
+  const started = Date.now();
   const job = await loadJob(env.DB, message.jobId);
   if (!job) return;
 
@@ -352,6 +366,15 @@ export async function processMicrosoftFileJob(
       mcp,
       itemKind,
       tenantId: token.tenantId,
+    });
+    logInfraEvent({
+      event: "microsoft.job_processed",
+      companyId: job.company_id,
+      jobId: job.id,
+      connector: "microsoft_365",
+      durationMs: Date.now() - started,
+      status: itemKind,
+      retryCount: job.attempts,
     });
     return;
   }
@@ -542,12 +565,33 @@ export async function processMicrosoftFileJob(
         : "indexed";
     await completeJob(env.DB, job.id, jobStatus);
     await finalizeMicrosoftSyncRunIfComplete(env, job.sync_run_id, job.source_id);
+    logInfraEvent({
+      event: "microsoft.job_processed",
+      companyId: job.company_id,
+      jobId: job.id,
+      connector: "microsoft_365",
+      durationMs: Date.now() - started,
+      status: jobStatus,
+      retryCount: job.attempts,
+    });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Sync failed";
     const current = await loadJob(env.DB, job.id);
     if ((current?.attempts ?? 0) >= MICROSOFT_QUEUE_MAX_RETRIES) {
       await markJobFailed(env.DB, job.id, message);
       await finalizeMicrosoftSyncRunIfComplete(env, job.sync_run_id, job.source_id);
+      logInfraEvent({
+        level: "error",
+        event: "microsoft.job_failed",
+        companyId: job.company_id,
+        jobId: job.id,
+        connector: "microsoft_365",
+        durationMs: Date.now() - started,
+        status: "failed",
+        retryCount: current?.attempts ?? job.attempts,
+        errorCategory: "PROVIDER",
+        message,
+      });
       return;
     }
     await upsertKnowledgeItem(env.DB, {
@@ -569,6 +613,18 @@ export async function processMicrosoftFileJob(
       lastError: message,
     });
     await markJobRetrying(env.DB, job.id, message);
+    logInfraEvent({
+      level: "warn",
+      event: "microsoft.job_retry",
+      companyId: job.company_id,
+      jobId: job.id,
+      connector: "microsoft_365",
+      durationMs: Date.now() - started,
+      status: "retrying",
+      retryCount: current?.attempts ?? job.attempts,
+      errorCategory: "PROVIDER",
+      message,
+    });
     throw err;
   }
 }

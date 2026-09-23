@@ -1,0 +1,48 @@
+/**
+ * Safe production lineage metadata. No secrets.
+ * Generated at deploy time so operators can tell a full superstack from a partial Worker.
+ */
+
+import { GENERATED_PRODUCTION_LINEAGE } from "../generated/production-lineage";
+
+export const PRODUCTION_LINEAGE_ID = "elvex-b8da-superstack";
+
+export const PRODUCTION_SUPERSTACK_CAPABILITIES = [
+  "whatsapp_webhook",
+  "oauth_discovery",
+  "mcp_gateway",
+  "portal_chat_api",
+  "xero_read_injection",
+  "outlook_read_path",
+  "rbac",
+  "usage_recording",
+  "quality_route",
+] as const;
+
+export type ProductionLineage = {
+  gitSha: string;
+  branch: string;
+  generatedAt: string;
+  lineage: typeof PRODUCTION_LINEAGE_ID;
+  capabilities: readonly string[];
+  complete: boolean;
+};
+
+export function readGeneratedLineage(): ProductionLineage {
+  const gitSha = GENERATED_PRODUCTION_LINEAGE.gitSha || "unknown";
+  return {
+    gitSha,
+    branch: GENERATED_PRODUCTION_LINEAGE.branch || "unknown",
+    generatedAt: GENERATED_PRODUCTION_LINEAGE.generatedAt || "",
+    lineage: PRODUCTION_LINEAGE_ID,
+    capabilities: PRODUCTION_SUPERSTACK_CAPABILITIES,
+    complete: gitSha !== "unknown",
+  };
+}
+
+export function publicProductionLineage(now = new Date()): ProductionLineage & { timestamp: string } {
+  return {
+    ...readGeneratedLineage(),
+    timestamp: now.toISOString(),
+  };
+}

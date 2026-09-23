@@ -5,6 +5,7 @@
 
 import { createHmac, timingSafeEqual } from "node:crypto";
 import type { Env } from "../env";
+import { infraPublicApiBase } from "./public-urls";
 import {
   finalizeMicrosoftSyncRunIfComplete,
   hasMicrosoftKnowledgeQueue,
@@ -32,10 +33,7 @@ export function verifyJobProcessorToken(
 export async function kickMicrosoftJobProcessor(env: Env, syncRunId: string): Promise<void> {
   if (hasMicrosoftKnowledgeQueue(env)) return;
 
-  const base = (env.INFRA_PUBLIC_API_URL ?? "https://infra-api.daniel-dwyer123.workers.dev").replace(
-    /\/$/,
-    "",
-  );
+  const base = infraPublicApiBase(env);
   const token = jobProcessorToken(env, syncRunId);
   await fetch(`${base}/api/internal/microsoft/process-next-job`, {
     method: "POST",

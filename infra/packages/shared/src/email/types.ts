@@ -19,7 +19,7 @@ export const FUTURE_TRANSACTIONAL_EMAIL_TYPES = [
   "REPORT_READY",
 ] as const;
 
-export type EmailProviderKind = "microsoft365" | "resend";
+export type EmailProviderKind = "cloudflare" | "microsoft365" | "resend";
 
 export type EmailDeliveryStatus = "queued" | "sending" | "sent" | "failed";
 

@@ -103,7 +103,7 @@ describe("document activity daily email", () => {
     vi.mocked(sendTransactionalEmail).mockResolvedValueOnce({ id: "email_1", sent: true });
 
     const result = await executeDocumentActivityDailyEmail(
-      { PORTAL_BASE_DOMAIN: "infra-web.pages.dev" } as never,
+      { PORTAL_PUBLIC_ORIGIN: "https://app.infrastack.app" } as never,
       ctx,
     );
     expect(result.summary).toBe("Document activity report sent");

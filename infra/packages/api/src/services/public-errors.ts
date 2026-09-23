@@ -7,8 +7,11 @@ export type PublicErrorCode =
   | "auth_reconnect"
   | "insufficient_credit"
   | "insufficient_permissions"
+  | "permission_denied"
   | "mcp_unavailable"
   | "connector_not_configured"
+  | "not_connected"
+  | "technical_failure"
   | "retry";
 
 const SAFE_PERMISSION_PREFIXES = [
@@ -17,6 +20,13 @@ const SAFE_PERMISSION_PREFIXES = [
   "role does not allow",
   "not allowed",
   "action not permitted",
+  "your current permissions",
+  "permissions don’t allow",
+  "permissions don't allow",
+  "doesn’t allow you",
+  "doesn't allow you",
+  "don’t allow access",
+  "don't allow access",
 ];
 
 export function publicToolErrorMessage(
@@ -25,6 +35,40 @@ export function publicToolErrorMessage(
 ): { code: PublicErrorCode; message: string } {
   const text = (raw ?? "").trim();
   const lower = text.toLowerCase();
+
+  if (
+    lower.includes("outlook needs reconnecting") ||
+    lower.includes("mail.read") ||
+    lower.includes("microsoft 365 is not connected") ||
+    lower.includes("outlook_graph_unauthorized") ||
+    (lower.includes("outlook") && (httpStatus === 401 || lower.includes("token")))
+  ) {
+    return {
+      code: "auth_reconnect",
+      message: "Outlook needs reconnecting",
+    };
+  }
+  if (
+    httpStatus === 429 ||
+    lower.includes("outlook_rate_limited") ||
+    lower.includes("microsoft temporarily rejected") ||
+    (lower.includes("outlook") && (httpStatus >= 500 || lower.includes("timeout") || lower.includes("aborted")))
+  ) {
+    return {
+      code: "retry",
+      message: "Microsoft temporarily rejected the request",
+    };
+  }
+  if (
+    lower.includes("mailbox source not found") ||
+    lower.includes("mailbox is not") ||
+    lower.includes("outlook_mailbox")
+  ) {
+    return {
+      code: "connector_not_configured",
+      message: "Outlook mailbox is not available",
+    };
+  }
 
   if (httpStatus === 401 || lower.includes("invalid or revoked") || lower.includes("authentication")) {
     return {
@@ -43,13 +87,45 @@ export function publicToolErrorMessage(
       message: "Insufficient credit",
     };
   }
+  if (
+    lower.includes("isn’t connected") ||
+    lower.includes("isn't connected") ||
+    lower.includes("is not connected") ||
+    lower.includes("aren’t connected") ||
+    lower.includes("aren't connected")
+  ) {
+    return {
+      code: "not_connected",
+      message: text && text.length < 200 ? text : "This capability isn’t connected for this company.",
+    };
+  }
+  if (
+    lower.includes("isn’t available through this connection") ||
+    lower.includes("isn't available through this connection") ||
+    lower.includes("tool_not_exposed")
+  ) {
+    return {
+      code: "connector_not_configured",
+      message: "This capability isn’t available through this connection yet.",
+    };
+  }
+  if (lower.includes("couldn’t reach xero") || lower.includes("couldn't reach xero")) {
+    return { code: "technical_failure", message: "I couldn’t reach Xero just now." };
+  }
+  if (
+    lower.includes("couldn’t retrieve") ||
+    lower.includes("couldn't retrieve") ||
+    lower.includes("just now")
+  ) {
+    return { code: "technical_failure", message: text };
+  }
   if (httpStatus === 403) {
     if (text && SAFE_PERMISSION_PREFIXES.some((p) => lower.startsWith(p) || lower.includes(p))) {
-      return { code: "insufficient_permissions", message: text };
+      return { code: "permission_denied", message: text };
     }
     return {
-      code: "insufficient_permissions",
-      message: "Insufficient permissions",
+      code: "permission_denied",
+      message: "Your current permissions don’t allow this action.",
     };
   }
   if (

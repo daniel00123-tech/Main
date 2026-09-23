@@ -106,6 +106,14 @@ export type PlatformOperationalHealth = {
   openFinancialExceptions: number;
   permissionDenialsLast24h: number;
   usageAnomalyFlags: string[];
+  infrastructure?: {
+    requests24h: number;
+    requestSuccessRate: number | null;
+    avgDurationMs: number | null;
+    automationRuns24h: number;
+    microsoftPending: number;
+    microsoftDeadLetter24h: number;
+  };
 };
 
 const STATE_RANK: Record<OperationalHealthState, number> = {

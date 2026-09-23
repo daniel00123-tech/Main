@@ -6,6 +6,8 @@
 
 import {
   DOCUMENT_SOURCE_CONNECTOR_IDS,
+  PLATFORM_EMAIL_FROM_ADDRESS,
+  TRANSACTIONAL_EMAIL_TYPES,
   automationCreatedViaOf,
   describeAutomationPlan,
   fingerprintForAutomation,
@@ -25,7 +27,6 @@ import {
   listConnectorInstances,
   recordAuditEvent,
 } from "../control-plane";
-import { getCompanyEmailConfig } from "../email/company-config";
 import { portalOrigin } from "../public-urls";
 import { computeNextRunUtcIso, formatScheduleLabel } from "./schedule";
 import {
@@ -96,19 +97,16 @@ export async function loadAutomationCapabilities(
   db: D1Database,
   companyId: string,
 ): Promise<AutomationCapabilitySnapshot> {
-  const [connectors, email] = await Promise.all([
-    listConnectorInstances(db, companyId),
-    getCompanyEmailConfig(db, companyId),
-  ]);
+  const connectors = await listConnectorInstances(db, companyId);
   const connected = connectors.filter((item) => item.authStatus === "connected");
   return {
     xeroConnected: connected.some((item) => item.connectorDefinitionId === "conn_xero"),
     documentSourcesConnected: connected.some((item) =>
       (DOCUMENT_SOURCE_CONNECTOR_IDS as readonly string[]).includes(item.connectorDefinitionId),
     ),
-    emailEnabled: Boolean(email?.enabled && email.senderAddress),
-    allowedEmailTypes: email?.allowedTypes ?? [],
-    senderAddress: email?.senderAddress ?? null,
+    emailEnabled: true,
+    allowedEmailTypes: [...TRANSACTIONAL_EMAIL_TYPES],
+    senderAddress: PLATFORM_EMAIL_FROM_ADDRESS,
   };
 }
 

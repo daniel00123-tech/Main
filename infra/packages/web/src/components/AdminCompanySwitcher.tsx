@@ -105,7 +105,7 @@ export default function AdminCompanySwitcher() {
                 >
                   <Globe2 size={16} aria-hidden />
                   <span className="company-switcher-text">
-                    <strong>INFRA Platform</strong>
+                    <strong>Infra platform</strong>
                     <span className="muted small">All companies</span>
                   </span>
                   {scope.mode === "platform" ? (

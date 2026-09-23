@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 268 64" fill="none" role="img" aria-labelledby="infraStackTitle">
+  <title id="infraStackTitle">Infra</title>
+  <defs>
+    <linearGradient id="infraStackBar" x1="12" y1="32" x2="48" y2="32" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#2F80FF"/>
+      <stop offset="1" stop-color="#22D3EE"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="16" fill="#0B1627"/>
+  <rect x="12" y="16" width="36" height="8" rx="4" fill="url(#infraStackBar)"/>
+  <rect x="12" y="28" width="28" height="8" rx="4" fill="url(#infraStackBar)"/>
+  <rect x="12" y="40" width="20" height="8" rx="4" fill="url(#infraStackBar)"/>
+  <text x="80" y="42" fill="#F5F9FF" font-family="DM Sans, ui-sans-serif, system-ui, sans-serif" font-size="28" font-weight="700" letter-spacing="-0.03em">Infra</text>
+  <text x="152" y="42" fill="#94A3B8" font-family="DM Sans, ui-sans-serif, system-ui, sans-serif" font-size="14" font-weight="500">stack</text>
+</svg>

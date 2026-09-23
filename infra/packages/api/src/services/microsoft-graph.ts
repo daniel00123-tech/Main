@@ -129,6 +129,44 @@ export async function graphGet<T>(config: MicrosoftGraphConfig, path: string): P
   return graphRequest(config, path, { method: "GET" });
 }
 
+export async function graphPost<T>(config: MicrosoftGraphConfig, path: string, body: unknown): Promise<T> {
+  return graphRequest(config, path, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+/** Metadata-only recent drive items. Not a semantic knowledge search. */
+export async function searchRecentDriveItems(
+  config: MicrosoftGraphConfig,
+  input: { top?: number; source?: "onedrive" | "sharepoint" | "all" },
+): Promise<GraphDriveItem[]> {
+  const size = Math.min(Math.max(input.top ?? 10, 1), 50);
+  const payload = await graphPost<{
+    value?: Array<{ hitsContainers?: Array<{ hits?: Array<{ resource?: GraphDriveItem }> }> }>;
+  }>(config, "/search/query", {
+    requests: [
+      {
+        entityTypes: ["driveItem"],
+        query: { queryString: "isDocument=true" },
+        from: 0,
+        size,
+        sortProperties: [{ name: "lastModifiedDateTime", isDescending: true }],
+      },
+    ],
+  });
+  const items: GraphDriveItem[] = [];
+  for (const request of payload.value ?? []) {
+    for (const container of request.hitsContainers ?? []) {
+      for (const hit of container.hits ?? []) {
+        if (hit.resource?.id && hit.resource.name) items.push(hit.resource);
+      }
+    }
+  }
+  return items;
+}
+
 export async function graphGetAll<T>(
   config: MicrosoftGraphConfig,
   path: string,
@@ -496,6 +534,57 @@ export async function deleteGraphSubscription(
   subscriptionId: string,
 ): Promise<void> {
   await graphRequest<void>(config, `/subscriptions/${subscriptionId}`, { method: "DELETE" });
+}
+
+/** Graph PATCH cannot change notificationUrl. Recreate when the webhook host changes. */
+export function isGraphSubscriptionConflict(err: unknown): boolean {
+  const message = (err instanceof Error ? err.message : String(err)).toLowerCase();
+  return (
+    message.includes("already exists") ||
+    message.includes("subscription limit") ||
+    message.includes("quota exceeded") ||
+    message.includes("maximum number of subscriptions")
+  );
+}
+
+/**
+ * Create the replacement subscription first so the existing one keeps delivering
+ * if Graph rejects the new notification URL. Delete the old id only after create.
+ * If Graph refuses a second subscription on the same resource, fall back to
+ * delete-then-create.
+ */
+export async function createReplacingGraphSubscription(
+  config: MicrosoftGraphConfig,
+  input: {
+    resource: string;
+    changeType: string;
+    notificationUrl: string;
+    expirationDateTime: string;
+    clientState: string;
+  },
+  existingGraphSubscriptionId?: string | null,
+): Promise<GraphSubscription> {
+  try {
+    const created = await createGraphSubscription(config, input);
+    if (existingGraphSubscriptionId && existingGraphSubscriptionId !== created.id) {
+      try {
+        await deleteGraphSubscription(config, existingGraphSubscriptionId);
+      } catch {
+        // Old Graph row may already be gone; D1 now points at the new id.
+      }
+    }
+    return created;
+  } catch (err) {
+    if (existingGraphSubscriptionId && isGraphSubscriptionConflict(err)) {
+      try {
+        await deleteGraphSubscription(config, existingGraphSubscriptionId);
+      } catch {
+        // Continue — create is the recovery path.
+      }
+      return createGraphSubscription(config, input);
+    }
+    throw err;
+  }
 }
 
 export async function ensureDriveFolderByPath(

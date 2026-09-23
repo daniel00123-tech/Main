@@ -1,19 +1,22 @@
 import { FormEvent, useState } from "react";
 import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
+import { InfraBrand } from "../components/InfraBrand";
+import { safeAdminReturnPath } from "../lib/admin-return";
 
 export default function LoginPage() {
   const { user, login } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const successMessage = (location.state as { message?: string } | null)?.message;
+  const destination = safeAdminReturnPath((location.state as { from?: string } | null)?.from) ?? "/";
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   if (user?.isPlatformAdmin) {
-    return <Navigate to="/" replace />;
+    return <Navigate to={destination} replace />;
   }
 
   async function handleSubmit(event: FormEvent) {
@@ -22,7 +25,7 @@ export default function LoginPage() {
     setError(null);
     try {
       await login(email, password);
-      navigate("/");
+      navigate(destination);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Sign in failed");
     } finally {
@@ -33,16 +36,10 @@ export default function LoginPage() {
   return (
     <div className="login-page">
       <div className="login-card">
-        <div className="brand-block" style={{ padding: 0 }}>
-          <div className="brand-mark">IN</div>
-          <div className="brand-text">
-            <span className="brand-name">INFRA</span>
-            <span className="brand-context">Admin Control Panel</span>
-          </div>
-        </div>
+        <InfraBrand showStack context="Admin" size={36} />
         <h1>Sign in</h1>
         <p className="muted">
-          Access the INFRA Admin Control Panel to manage companies, integrations, and access.
+          Access the Infra admin control panel to manage companies, integrations, and access.
         </p>
         {successMessage ? <p className="info-banner">{successMessage}</p> : null}
         <form className="login-form" onSubmit={(e) => void handleSubmit(e)}>
@@ -76,6 +73,9 @@ export default function LoginPage() {
         </form>
         <p className="muted small" style={{ marginTop: 20 }}>
           Company users: <Link to="/portal/login">sign in to your company portal</Link>
+        </p>
+        <p className="muted small legal-footer-link">
+          <Link to="/privacy">Privacy Policy</Link>
         </p>
       </div>
     </div>

@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "wrangler dev",
-    "deploy": "wrangler deploy",
+    "deploy": "node scripts/assert-production-superstack.mjs && node scripts/write-production-lineage.mjs && wrangler deploy",
+    "assert:superstack": "node scripts/assert-production-superstack.mjs",
     "db:migrate:local": "wrangler d1 migrations apply infra-control-plane --local",
     "db:seed:local": "wrangler d1 execute infra-control-plane --local --file=./src/seed.sql",
     "typecheck": "tsc --noEmit",

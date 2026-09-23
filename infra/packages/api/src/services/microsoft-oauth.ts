@@ -7,10 +7,12 @@ import {
   CONNECTOR_ERROR_CODES,
   MICROSOFT_APP_PERMISSIONS,
   MICROSOFT_GRAPH_SCOPES,
+  MICROSOFT_OAUTH_CALLBACK_PATH,
   customerConnectorError,
   type MicrosoftConnectorAuthMode,
 } from "@infra/shared";
 import type { Env } from "../env";
+import { infraPublicApiBase, portalOrigin as canonicalPortalOrigin } from "./public-urls";
 import { newId, nowIso } from "../db/mappers";
 import {
   createOauthAuthorizationState,
@@ -45,15 +47,7 @@ export function microsoftRedirectUri(env: Env): string {
   const override =
     typeof env.MICROSOFT_REDIRECT_URI === "string" ? env.MICROSOFT_REDIRECT_URI.trim() : "";
   if (override) return override;
-  return `${String(env.INFRA_PUBLIC_API_URL ?? "").replace(/\/$/, "")}/api/connectors/microsoft/oauth/callback`;
-}
-
-function portalOrigin(env: Env): string {
-  const allowed = (env.ALLOWED_ORIGINS ?? "")
-    .split(",")
-    .map((item) => item.trim())
-    .filter((item) => item.startsWith("https://"));
-  return allowed[0] || "https://infra-web.pages.dev";
+  return `${infraPublicApiBase(env)}${MICROSOFT_OAUTH_CALLBACK_PATH}`;
 }
 
 export function portalMicrosoftReturnUrl(
@@ -62,7 +56,7 @@ export function portalMicrosoftReturnUrl(
   query: Record<string, string>,
 ): string {
   const params = new URLSearchParams(query);
-  return `${portalOrigin(env)}/portal/${encodeURIComponent(slug)}/microsoft-365?${params.toString()}`;
+  return `${canonicalPortalOrigin(env)}/portal/${encodeURIComponent(slug)}/microsoft-365?${params.toString()}`;
 }
 
 export function microsoftOAuthStatus(env: Env): {

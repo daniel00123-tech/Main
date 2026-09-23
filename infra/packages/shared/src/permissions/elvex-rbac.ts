@@ -111,12 +111,40 @@ export function elvexCapabilitiesForRole(role: ElvexRole): ElvexCapability[] {
   return [...ELVEX_ROLE_GRANTS[role]].sort();
 }
 
+/** Map a user/ChatGPT mailbox hint onto the configured Elvex SMTP address. Does not invent addresses. */
+export function resolveElvexConfiguredMailbox(raw: string | null | undefined): string | null {
+  if (!raw?.trim()) return null;
+  const value = raw.trim().toLowerCase();
+  if (
+    value === "info" ||
+    value === "info@" ||
+    value === "info inbox" ||
+    value === "the info inbox" ||
+    value.startsWith("info@") ||
+    ELVEX_INFO_MAILBOXES.includes(value)
+  ) {
+    return ELVEX_INFO_MAILBOXES[0];
+  }
+  if (
+    value === "finance" ||
+    value === "finance@" ||
+    value === "finance inbox" ||
+    value === "the finance inbox" ||
+    value.startsWith("finance@") ||
+    ELVEX_FINANCE_MAILBOXES.includes(value)
+  ) {
+    return ELVEX_FINANCE_MAILBOXES[0];
+  }
+  return raw.trim();
+}
+
 export function elvexMailboxCapability(
   mailbox: string | null | undefined,
   write: boolean,
 ): ElvexCapability | null {
-  if (!mailbox?.trim()) return null;
-  const addr = mailbox.trim().toLowerCase();
+  const resolved = resolveElvexConfiguredMailbox(mailbox);
+  if (!resolved) return null;
+  const addr = resolved.toLowerCase();
   if (addr.includes("finance@") || ELVEX_FINANCE_MAILBOXES.includes(addr)) {
     return write ? "mail.finance.write" : "mail.finance.read";
   }
@@ -145,10 +173,14 @@ export function mapActionToElvexCapability(
     return action as ElvexCapability;
   }
   if (action === "system.health") return "system.health";
-  if (action === "knowledge.search" || action === "knowledge.read") {
+  if (action === "knowledge.search" || action === "knowledge.read" || action === "knowledge.catalogue") {
     return "engineer_or_company";
   }
-  if (action.startsWith("xero.reports.profit") || action.includes("profit_and_loss")) {
+  if (
+    action.startsWith("xero.reports.profit") ||
+    action.includes("profit_and_loss") ||
+    action === "xero.reports.pnl.read"
+  ) {
     return "xero.finance.read";
   }
   if (
@@ -156,17 +188,26 @@ export function mapActionToElvexCapability(
     action === "xero.invoices.search" ||
     action === "xero.invoices.get" ||
     action === "xero.contacts.read" ||
-    action === "xero.contacts.search"
+    action === "xero.contacts.search" ||
+    action === "xero.sales.read" ||
+    action === "xero.sales.summary" ||
+    action === "xero.top_customers"
   ) {
     return "xero.sales.read";
   }
   if (
     action.startsWith("xero.bills") ||
     action === "xero.accounts.list" ||
+    action === "xero.accounts.read" ||
     action === "xero.bank_transactions.read" ||
     action === "xero.credit_notes.read" ||
     action === "xero.payments.read" ||
     action === "xero.reports.profit_and_loss" ||
+    action === "xero.reports.balance_sheet.read" ||
+    action === "xero.reports.aged.read" ||
+    action === "xero.tax_rates.read" ||
+    action === "xero.vat.capability" ||
+    action === "xero.top_suppliers" ||
     action === "xero.organisation.read" ||
     action === "xero.health" ||
     action === "xero.token_refresh"
@@ -244,4 +285,21 @@ export const ELVEX_MCP_TOOL_CAPABILITIES: Record<string, ElvexCapability> = {
   search_xero_bills: "xero.finance.read",
   get_xero_financial_summary: "xero.finance.read",
   create_xero_draft_invoice: "xero.draft.write",
+  xero_sales_summary: "xero.sales.read",
+  xero_search_invoices: "xero.sales.read",
+  xero_get_invoice: "xero.sales.read",
+  xero_list_overdue_invoices: "xero.sales.read",
+  xero_top_customers: "xero.sales.read",
+  xero_list_contacts: "xero.sales.read",
+  xero_get_contact: "xero.sales.read",
+  xero_get_organisation: "xero.finance.read",
+  xero_profit_and_loss: "xero.finance.read",
+  xero_balance_sheet: "xero.finance.read",
+  xero_aged_receivables: "xero.finance.read",
+  xero_list_accounts: "xero.finance.read",
+  xero_list_payments: "xero.finance.read",
+  xero_list_bank_transactions: "xero.finance.read",
+  xero_top_suppliers: "xero.finance.read",
+  xero_list_tax_rates: "xero.finance.read",
+  xero_vat_capability: "xero.finance.read",
 };

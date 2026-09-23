@@ -236,3 +236,26 @@ describe("Outlook mail knowledge helpers", () => {
     expect(guide.exchangeSteps.join("\n")).not.toContain("secret");
   });
 });
+
+describe("Elvex company-MCP mailbox mapping", () => {
+  it("maps info inbox onto the configured Elvex info mailbox only", async () => {
+    const { resolveCompanyOutlookMailbox } = await import("./microsoft-outlook-company-mcp");
+    expect(resolveCompanyOutlookMailbox({ companyId: "co_el", mailboxAddress: "info inbox" })).toEqual({
+      ok: true,
+      mailboxAddress: "info@elvexpropertyservices.com",
+    });
+    expect(resolveCompanyOutlookMailbox({ companyId: "co_el", mailboxAddress: null })).toEqual({
+      ok: true,
+      mailboxAddress: "info@elvexpropertyservices.com",
+    });
+    expect(
+      resolveCompanyOutlookMailbox({
+        companyId: "co_el",
+        mailboxAddress: "finance@elvexpropertyservices.com",
+      }),
+    ).toEqual({
+      ok: true,
+      mailboxAddress: "finance@elvexpropertyservices.com",
+    });
+  });
+});

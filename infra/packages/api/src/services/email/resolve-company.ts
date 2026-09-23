@@ -1,7 +1,6 @@
 import { listMembershipsForUser } from "../../auth/users";
 import { getCompanyByPortalSubdomain } from "../tenant-provisioning";
 import { getCompanyById } from "../control-plane";
-import { getCompanyEmailConfig } from "./company-config";
 import { portalBaseDomain } from "../public-urls";
 import type { Env } from "../../env";
 
@@ -30,21 +29,12 @@ export async function resolvePasswordResetCompanyId(
   db: D1Database,
   input: { userId: string; origin?: string | null },
 ): Promise<string | null> {
-  const fromOrigin = await resolveCompanyIdFromPortalOrigin(env, db, input.origin);
-  if (fromOrigin) {
-    const config = await getCompanyEmailConfig(db, fromOrigin);
-    const memberships = await listMembershipsForUser(db, input.userId);
-    const isMember = memberships.some((m) => m.companyId === fromOrigin);
-    if (config?.enabled && isMember) return fromOrigin;
-  }
-
   const memberships = await listMembershipsForUser(db, input.userId);
-  for (const membership of memberships) {
-    const config = await getCompanyEmailConfig(db, membership.companyId);
-    if (config?.enabled) return membership.companyId;
+  const fromOrigin = await resolveCompanyIdFromPortalOrigin(env, db, input.origin);
+  if (fromOrigin && memberships.some((m) => m.companyId === fromOrigin)) {
+    return fromOrigin;
   }
-
-  return null;
+  return memberships[0]?.companyId ?? null;
 }
 
 export async function companyDisplayNameForEmail(
