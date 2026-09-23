@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "ht-business": {
+      "type": "http",
+      "url": "https://ht-business-mcp.daniel-dwyer123.workers.dev/mcp"
+    }
+  }
+}
