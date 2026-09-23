@@ -1,6 +1,8 @@
 import datetime as dt
 import decimal
+import json
 import unittest
+import unittest.mock
 
 from scripts.staff_commission import (
     attach_job_commissions,
@@ -8,13 +10,21 @@ from scripts.staff_commission import (
     sum_job_commissions,
 )
 from scripts.staff_profit_report import (
+    DEFAULT_MAIL_CC,
+    DEFAULT_MAIL_TO,
     RUN_EDGE,
+    ConfigError,
+    _category_rows,
     build_html,
     build_staff_rows,
     commission_style,
     daily_totals,
     is_missing_po_anomaly,
     iter_display_rows,
+    parse_args,
+    report_month_or_raise,
+    resolve_staff,
+    send_graph_mail,
 )
 
 
@@ -497,6 +507,90 @@ class CompleteGroupReportingTest(unittest.TestCase):
         self.assertEqual(anomaly_rows, [])
         self.assertEqual(main_rows[0]["sale"], D("120.00"))
         self.assertEqual(main_rows[0]["cost"], D("0.00"))
+
+
+class CurrentMonthAndStaffTest(unittest.TestCase):
+    def test_cli_defaults_to_current_london_month_and_ella_to_william_cc(self) -> None:
+        args = parse_args([])
+        today = dt.datetime.now(dt.timezone.utc).astimezone(
+            __import__("zoneinfo").ZoneInfo("Europe/London")
+        ).date()
+        self.assertEqual(args.year, today.year)
+        self.assertEqual(args.month, today.month)
+        self.assertEqual(args.staff, "Sharon")
+        self.assertEqual(args.to, DEFAULT_MAIL_TO)
+        self.assertEqual(args.cc, DEFAULT_MAIL_CC)
+        self.assertEqual(DEFAULT_MAIL_TO, "ella@elvexpropertyservices.com")
+        self.assertEqual(DEFAULT_MAIL_CC, "william@elvexpropertyservices.com")
+
+    def test_past_month_is_refused(self) -> None:
+        with self.assertRaises(ConfigError) as ctx:
+            report_month_or_raise(2026, 8, today=dt.date(2026, 9, 23))
+        self.assertIn("September 2026", str(ctx.exception))
+        self.assertIn("August 2026", str(ctx.exception))
+        start, end = report_month_or_raise(2026, 9, today=dt.date(2026, 9, 23))
+        self.assertEqual(start, dt.date(2026, 9, 1))
+        self.assertEqual(end, dt.date(2026, 9, 30))
+
+    def test_known_staff_use_fixed_category_ids(self) -> None:
+        self.assertEqual(resolve_staff("Sharon")["category_id"], 132264)
+        self.assertEqual(resolve_staff("ella")["name"], "Ella")
+        self.assertEqual(resolve_staff("LAUREN")["category_id"], 132263)
+
+    def test_unknown_staff_is_looked_up_and_never_guessed(self) -> None:
+        looked_up = resolve_staff("Alex", lookup=lambda name: 999001 if name == "Alex" else None)
+        self.assertEqual(looked_up, {"name": "Alex", "category_id": 999001})
+        with self.assertRaises(ConfigError):
+            resolve_staff("Nobody", lookup=lambda _name: (_ for _ in ()).throw(
+                ConfigError("No BigChange job category named 'Nobody'")
+            ))
+
+    def test_category_rows_do_not_invent_ids(self) -> None:
+        rows = _category_rows({"JobCategoriesList": [{"JobCategoryName": "Alex", "JobCategoryId": 42}]})
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["JobCategoryId"], 42)
+
+
+class GraphMailTest(unittest.TestCase):
+    def test_send_graph_mail_always_ccs_william(self) -> None:
+        captured: dict = {}
+
+        class FakeResp:
+            status = 202
+
+            def read(self) -> bytes:
+                return b""
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return False
+
+        def fake_urlopen(req, timeout=60):
+            captured["url"] = req.full_url
+            captured["body"] = json.loads(req.data.decode())
+            return FakeResp()
+
+        with (
+            unittest.mock.patch("scripts.staff_profit_report.graph_token", return_value="token"),
+            unittest.mock.patch("scripts.staff_profit_report.urllib.request.urlopen", side_effect=fake_urlopen),
+        ):
+            send_graph_mail(
+                "Sharon — September 2026 — commission report",
+                "<p>ok</p>",
+                DEFAULT_MAIL_TO,
+                DEFAULT_MAIL_CC,
+            )
+        self.assertTrue(captured["body"]["saveToSentItems"])
+        self.assertEqual(
+            captured["body"]["message"]["toRecipients"][0]["emailAddress"]["address"],
+            "ella@elvexpropertyservices.com",
+        )
+        self.assertEqual(
+            captured["body"]["message"]["ccRecipients"][0]["emailAddress"]["address"],
+            "william@elvexpropertyservices.com",
+        )
 
 
 if __name__ == "__main__":
