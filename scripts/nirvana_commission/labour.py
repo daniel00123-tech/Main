@@ -86,15 +86,18 @@ def is_coded_subcontractor_resource(name: str) -> bool:
     """True when a resource name is a letter-coded subcontractor profile.
 
     The code must be at the start: one or more letters, then an underscore.
-    A space after the underscore still matches (``S_ Andy Mann``). A space
-    before the underscore (``U _Phillipa Berry``), a dot prefix
-    (``GM. Iqbal``), or an underscore later in the name (``zz. E_Adam Baker``)
-    does not.
+    A space after the underscore still matches (``S_ Andy Mann``), including
+    when the same name contains a slash (``S_ Reactive/Remedial``). A space
+    before the underscore (``U _Phillipa Berry``), a dot or dash prefix
+    (``GM. Iqbal``, ``GM - Stuart``), or an underscore later in the name
+    (``zz. E_Adam Baker``) does not.
     """
     text = clean_name(name)
     if not text:
         return False
-    parts = [part.strip() for part in text.split("/") if part.strip()]
+    # A single resource can contain a slash (``S_ Reactive/Remedial``).
+    # Only `` / `` separates two resource names on one job.
+    parts = [part.strip() for part in text.split(" / ") if part.strip()]
     if not parts:
         return False
     return all(bool(_CODED_SUBCONTRACTOR.match(part)) for part in parts)

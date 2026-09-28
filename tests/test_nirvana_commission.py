@@ -273,6 +273,8 @@ class LabourEngineTest(unittest.TestCase):
             "T_Mohamed Charef",
             "TW_Contract Monthly Communal Cleaning",
             "UDAP_Aston_GM Paul Sherrington",
+            "S_ Reactive/Remedial",
+            "Z_Services Reactive/remedial",
         )
         for name in coded:
             self.assertTrue(is_coded_subcontractor_resource(name), name)
@@ -288,6 +290,9 @@ class LabourEngineTest(unittest.TestCase):
             "Z _ Aquilo",
             "zz. E_Adam Baker",
             "GM. Iqbal Hussain - OL1",
+            "z. Kieran Walc - B/WS",
+            "GM - Stuart Williams - CO9",
+            "E. Michael Glavin - HA2",
         )
         for name in still_labour:
             self.assertFalse(is_coded_subcontractor_resource(name), name)
