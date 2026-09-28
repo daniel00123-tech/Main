@@ -39,7 +39,7 @@ In-house names such as `GM - Stuart Williams`, `E - Jay Vaja`, and `FA - Vairava
 
 ## Leave the rest of the rules in place
 
-Ownership is the first job's category. An unscheduled Fire Audit Sign Off does not hold the group. A scheduled sign-off, or any other open job, still does. Contract and recurring groups are excluded before totals. A sale over £250 with no purchase order is an anomaly. Do not show the hourly rate or the labour method in the report.
+Ownership is the first job's category. An unscheduled Fire Audit Sign Off does not hold the group. A scheduled sign-off, or any other open job, still does. Contract and recurring groups are excluded before totals. A sale over £250 with no purchase order and no labour is an anomaly. Labour on its own is an acceptable cost, so a visit with no purchase order stays in the totals when an in-house engineer attended. Do not show the hourly rate or the labour method in the report.
 
 ## After the run
 

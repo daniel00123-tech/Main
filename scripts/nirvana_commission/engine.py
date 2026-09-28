@@ -150,8 +150,12 @@ def group_owner_category_id(members: list[dict[str, Any]]) -> int | None:
     return job_category_id(first)
 
 
-def is_missing_po_anomaly(sale: D, po_cost: D) -> bool:
-    return sale > ANOMALY_SALE and abs(po_cost) < MIN_PO_AMOUNT
+def is_missing_po_anomaly(sale: D, po_cost: D, labour: D = ZERO) -> bool:
+    """A sale over £250 with no purchase order is an anomaly only when labour is also missing.
+
+    An in-house visit with payroll labour and no purchase order is an acceptable cost.
+    """
+    return sale > ANOMALY_SALE and abs(po_cost) < MIN_PO_AMOUNT and abs(labour) < MIN_PO_AMOUNT
 
 
 def index_jobs(raw_jobs: list[dict[str, Any]]) -> tuple[dict[int, dict[str, Any]], dict[int, list[dict[str, Any]]]]:
@@ -302,11 +306,11 @@ def build_staff_report(
             )
             continue
 
-        if is_missing_po_anomaly(sale, po):
+        if is_missing_po_anomaly(sale, po, labour):
             anomaly_rows.append(
                 {
                     **row,
-                    "reason": "Sale over £250 with no purchase order (Labour is not a PO)",
+                    "reason": "Sale over £250 with no purchase order and no labour",
                 }
             )
             continue

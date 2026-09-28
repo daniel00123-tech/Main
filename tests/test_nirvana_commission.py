@@ -466,12 +466,36 @@ class OwnershipAndHoldTest(unittest.TestCase):
         self.assertTrue(is_missing_po_anomaly(D("250.01"), D("0")))
         self.assertFalse(is_missing_po_anomaly(D("250"), D("0")))
         self.assertFalse(is_missing_po_anomaly(D("251"), D("1")))
+        self.assertFalse(is_missing_po_anomaly(D("300"), D("0"), D("93.75")))
+        self.assertTrue(is_missing_po_anomaly(D("300"), D("0"), D("0")))
+
+    def test_labour_without_a_purchase_order_stays_in_the_totals(self) -> None:
+        attended = completed_job(1, 36624, "2026-09-04", Resource="FD - Charles Mabira - RH11")
+        nobody = completed_job(2, 99901, "2026-09-05", Resource="", ResourceGroup="")
+        docs = [
+            invoice("inv-attended", 1, "2026-09-04", "300"),
+            invoice("inv-nobody", 2, "2026-09-05", "400"),
+        ]
+        main, anomalies, _review, contracts = build_staff_report(
+            jobs=[attended, nobody],
+            docs=docs,
+            category_id=ABI,
+            month_start=dt.date(2026, 9, 1),
+            month_end=dt.date(2026, 9, 30),
+            today=dt.date(2026, 9, 28),
+        )
+        self.assertEqual(contracts, [])
+        self.assertEqual([row["reference"] for row in main], ["GR/36624"])
+        self.assertGreater(main[0]["labour"], D("0"))
+        self.assertEqual(main[0]["cost"], D("0.00"))
+        self.assertEqual([row["reference"] for row in anomalies], ["GR/99901"])
+        self.assertEqual(anomalies[0]["labour"], D("0.00"))
 
     def test_grouped_invoice_month_and_reference(self) -> None:
         jobs = [
             completed_job(101, 18358, "2026-02-01 09:00:00", JobGroupReference="GR/18358"),
             completed_job(102, 18358, "2026-02-02 09:00:00", JobCategoryId=AMY, Category="Amy Marshall", Resource="Office Admin", ResourceGroup="Office"),
-            completed_job(201, 99, "2026-04-01 09:00:00", JobGroupReference="GR/99"),
+            completed_job(201, 99, "2026-04-01 09:00:00", JobGroupReference="GR/99", Resource="", ResourceGroup=""),
         ]
         docs = [
             invoice("inv-1", 101, "2026-09-10", "400"),
