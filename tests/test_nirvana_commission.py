@@ -40,6 +40,7 @@ from scripts.nirvana_commission.jobwatch import (
 )
 from scripts.nirvana_commission.labour import (
     attracts_labour,
+    is_coded_subcontractor_resource,
     compute_job_labour,
     group_has_iqbal_po_offset,
     paid_hours_for_day,
@@ -264,6 +265,40 @@ class LabourEngineTest(unittest.TestCase):
         self.assertTrue(attracts_labour(self._job(ResourceGroup="Core Team - Electrical")))
         self.assertTrue(attracts_labour(self._job(ResourceGroup="1. Engineer")))
         self.assertFalse(attracts_labour(self._job(ResourceGroup="2. Subcontractor")))
+
+    def test_letter_underscore_subcontractor_profiles_have_no_labour(self) -> None:
+        coded = (
+            "C_Lewisham Gateway",
+            "S_ Andy Mann",
+            "T_Mohamed Charef",
+            "TW_Contract Monthly Communal Cleaning",
+            "UDAP_Aston_GM Paul Sherrington",
+        )
+        for name in coded:
+            self.assertTrue(is_coded_subcontractor_resource(name), name)
+            self.assertFalse(attracts_labour(self._job(Resource=name, ResourceGroup="Engineer")), name)
+            self.assertEqual(
+                compute_job_labour([self._job(JobId=40, Resource=name, PlannedDurationHours="4")])[40],
+                D("0"),
+                name,
+            )
+        still_labour = (
+            "Pat Engineer",
+            "U _Phillipa Berry",
+            "Z _ Aquilo",
+            "zz. E_Adam Baker",
+            "GM. Iqbal Hussain - OL1",
+        )
+        for name in still_labour:
+            self.assertFalse(is_coded_subcontractor_resource(name), name)
+        self.assertTrue(attracts_labour(self._job(Resource="Pat Engineer")))
+        self.assertGreater(
+            compute_job_labour([self._job(JobId=41, Resource="Pat Engineer", PlannedDurationHours="2")])[41],
+            D("0"),
+        )
+        mixed = "Pat Engineer / S_ Andy Mann"
+        self.assertFalse(is_coded_subcontractor_resource(mixed))
+        self.assertTrue(attracts_labour(self._job(Resource=mixed)))
 
     def test_day_engine_rules(self) -> None:
         self.assertEqual(paid_hours_for_day([self._job(PlannedDurationHours="0.5")])[1], D("2"))

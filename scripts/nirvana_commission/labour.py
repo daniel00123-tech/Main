@@ -21,6 +21,10 @@ D = decimal.Decimal
 ZERO = D("0")
 NOON = dt.time(12, 0)
 EVENING = dt.time(17, 0)
+# Subcontractor profiles on this tenant are coded Name prefixes: one or more
+# letters, then an underscore (S_, TW_, UDAP_). The purchase order already
+# carries their cost, so payroll labour would double-count it.
+_CODED_SUBCONTRACTOR = re.compile(r"^[A-Za-z]+_")
 
 
 def resource_name(job: dict[str, Any]) -> str:
@@ -78,6 +82,24 @@ def is_known_subcontractor_name(name: str) -> bool:
     return any(needle in key for needle in KNOWN_SUBCONTRACTOR_NEEDLES)
 
 
+def is_coded_subcontractor_resource(name: str) -> bool:
+    """True when a resource name is a letter-coded subcontractor profile.
+
+    The code must be at the start: one or more letters, then an underscore.
+    A space after the underscore still matches (``S_ Andy Mann``). A space
+    before the underscore (``U _Phillipa Berry``), a dot prefix
+    (``GM. Iqbal``), or an underscore later in the name (``zz. E_Adam Baker``)
+    does not.
+    """
+    text = clean_name(name)
+    if not text:
+        return False
+    parts = [part.strip() for part in text.split("/") if part.strip()]
+    if not parts:
+        return False
+    return all(bool(_CODED_SUBCONTRACTOR.match(part)) for part in parts)
+
+
 def _group_is_exempt(group: str) -> bool:
     text = group.lower().strip()
     compact = compact_key(group)
@@ -98,7 +120,7 @@ def attracts_labour(job: dict[str, Any], group_map: dict[str, str] | None = None
     if is_unassigned(job):
         return False
     name = resource_name(job)
-    if is_known_subcontractor_name(name):
+    if is_known_subcontractor_name(name) or is_coded_subcontractor_resource(name):
         return False
     group = resource_group_label(job, group_map)
     if _group_is_exempt(group):
