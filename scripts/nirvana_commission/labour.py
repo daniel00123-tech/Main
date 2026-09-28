@@ -25,6 +25,19 @@ EVENING = dt.time(17, 0)
 # letters, then an underscore (S_, TW_, UDAP_). The purchase order already
 # carries their cost, so payroll labour would double-count it.
 _CODED_SUBCONTRACTOR = re.compile(r"^[A-Za-z]+_")
+# Aquilo-shared jobs keep a resource name. On this tenant that name starts
+# with Z. (z. Winston), a lone Z (Z Connor, Z _ Aquilo), or zz / Zzz.
+# Job and JobsList do not carry a share/company flag; Assistants is empty.
+_AQUILO_Z_RESOURCE = re.compile(r"^(?:[Zz]\.|[Zz](?![A-Za-z])|[Zz]{2,}(?:[.\s_-]|$))")
+# Named Aquilo engineers whose resource still looks in-house (E., C., GM.).
+_AQUILO_NAME_PATTERNS = (
+    re.compile(r"\bdowell\b", re.IGNORECASE),
+    re.compile(r"\brose\b", re.IGNORECASE),
+    re.compile(r"\bglavin\b", re.IGNORECASE),
+    re.compile(r"\biman\b", re.IGNORECASE),
+    re.compile(r"\biqbal\b", re.IGNORECASE),
+    re.compile(r"\brichard\b.+\bsims\b|\bsims\b.+\brichard\b", re.IGNORECASE),
+)
 
 
 def resource_name(job: dict[str, Any]) -> str:
@@ -103,6 +116,32 @@ def is_coded_subcontractor_resource(name: str) -> bool:
     return all(bool(_CODED_SUBCONTRACTOR.match(part)) for part in parts)
 
 
+def _resource_parts(name: str) -> list[str]:
+    text = clean_name(name)
+    if not text:
+        return []
+    return [part.strip() for part in text.split(" / ") if part.strip()]
+
+
+def is_aquilo_shared_resource(name: str) -> bool:
+    """True for an Aquilo-shared resource that must not also take payroll labour.
+
+    A leading ``Z.``, a lone ``Z``, or ``zz`` / ``Zzz`` marks a shared Aquilo
+    resource. Dowell, Rose, Glavin, Iman, Iqbal, and Richard Sims are named
+    Aquilo engineers even when the resource uses an in-house code such as
+    ``E.`` or ``GM.``. There is no job-level share flag to use instead.
+    """
+    parts = _resource_parts(name)
+    if not parts:
+        return False
+    for part in parts:
+        if _AQUILO_Z_RESOURCE.match(part):
+            return True
+        if any(pattern.search(part) for pattern in _AQUILO_NAME_PATTERNS):
+            return True
+    return False
+
+
 def _group_is_exempt(group: str) -> bool:
     text = group.lower().strip()
     compact = compact_key(group)
@@ -123,7 +162,11 @@ def attracts_labour(job: dict[str, Any], group_map: dict[str, str] | None = None
     if is_unassigned(job):
         return False
     name = resource_name(job)
-    if is_known_subcontractor_name(name) or is_coded_subcontractor_resource(name):
+    if (
+        is_known_subcontractor_name(name)
+        or is_coded_subcontractor_resource(name)
+        or is_aquilo_shared_resource(name)
+    ):
         return False
     group = resource_group_label(job, group_map)
     if _group_is_exempt(group):

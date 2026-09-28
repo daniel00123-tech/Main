@@ -40,6 +40,7 @@ from scripts.nirvana_commission.jobwatch import (
 )
 from scripts.nirvana_commission.labour import (
     attracts_labour,
+    is_aquilo_shared_resource,
     is_coded_subcontractor_resource,
     compute_job_labour,
     group_has_iqbal_po_offset,
@@ -305,6 +306,42 @@ class LabourEngineTest(unittest.TestCase):
         self.assertFalse(is_coded_subcontractor_resource(mixed))
         self.assertTrue(attracts_labour(self._job(Resource=mixed)))
 
+    def test_aquilo_shared_resources_have_no_labour(self) -> None:
+        shared = (
+            "z. Winston Carter",
+            "z. Kieran Walc - B/WS",
+            "Z _ Aquilo",
+            "Z Connor Higginbotham",
+            "zz. Amin AF - DE24",
+            "zz Isabel Strong",
+            "Zzz - Ramin Ebrahimi - W13",
+            "C. Darryl Rose - CR0",
+            "E. Michael Glavin - HA2",
+            "GM. Iman Ghanavatkhouzestan - NW10",
+            "GM. Iqbal Hussain - OL1",
+            "GM. Richard Sims - DE7",
+            "A. Sam Dowell - M1",
+        )
+        for name in shared:
+            self.assertTrue(is_aquilo_shared_resource(name), name)
+            self.assertFalse(attracts_labour(self._job(Resource=name, ResourceGroup="Engineer")), name)
+            self.assertEqual(
+                compute_job_labour([self._job(JobId=50, Resource=name, PlannedDurationHours="4")])[50],
+                D("0"),
+                name,
+            )
+        still = (
+            "Pat Engineer",
+            "GM - Stuart Williams - CO9",
+            "E - Jay Vaja - SS15",
+            "FA - Vairavan Arumugam - SE20",
+            "Zoe Carter",
+        )
+        for name in still:
+            self.assertFalse(is_aquilo_shared_resource(name), name)
+            self.assertTrue(attracts_labour(self._job(Resource=name)), name)
+        self.assertFalse(attracts_labour(self._job(Resource="Pat Engineer / z. Winston Carter")))
+
     def test_day_engine_rules(self) -> None:
         self.assertEqual(paid_hours_for_day([self._job(PlannedDurationHours="0.5")])[1], D("2"))
         self.assertEqual(paid_hours_for_day([self._job(PlannedDurationHours="2")])[1], D("3"))
@@ -343,11 +380,12 @@ class LabourEngineTest(unittest.TestCase):
         self.assertEqual(compute_job_labour([iqbal], docs_by_group={99: essential})[11], D("0"))
         materials = [{"kind": "po", "raw": {"Supplier": "City Plumbing", "Description": "General materials"}}]
         self.assertFalse(po_matches_essentialz_or_iqbal(materials[0]["raw"]))
+        # Iqbal is an Aquilo engineer, so payroll stays £0 even without an Essentialz PO.
         kept = compute_job_labour(
             [self._job(JobId=12, Resource="GM. Iqbal Hussain - OL1", _group_id=88, PlannedDurationHours="2")],
             docs_by_group={88: materials},
         )
-        self.assertEqual(kept[12], money(D("3") * LABOUR_RATE))
+        self.assertEqual(kept[12], D("0"))
 
 
 class OwnershipAndHoldTest(unittest.TestCase):
