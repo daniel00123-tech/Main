@@ -28,6 +28,7 @@ from scripts.nirvana_commission.engine import (
     group_owner_category_id,
     is_excluded_pack_category,
     is_missing_po_anomaly,
+    is_unscheduled_fire_audit_sign_off,
     job_group_reference,
 )
 from scripts.nirvana_commission.jobwatch import (
@@ -332,6 +333,56 @@ class OwnershipAndHoldTest(unittest.TestCase):
                 [{"JobId": 1, "Status": "Completed with issues"}, {"JobId": 2, "Status": "Cancelled"}]
             )
         )
+
+    def test_unscheduled_fire_audit_sign_off_does_not_hold_the_group(self) -> None:
+        sign_off = {
+            "JobId": 2,
+            "JobGroupId": 50,
+            "Status": "Unscheduled",
+            "Type": "Fire Audit Sign Off",
+            "JobCategoryId": 131768,
+            "Category": "Chris McCann",
+        }
+        self.assertTrue(is_unscheduled_fire_audit_sign_off(sign_off))
+        self.assertTrue(group_all_jobs_completed([{"JobId": 1, "Status": "Completed"}, sign_off]))
+        self.assertFalse(
+            is_unscheduled_fire_audit_sign_off({**sign_off, "Status": "Scheduled"})
+        )
+        self.assertFalse(
+            group_all_jobs_completed(
+                [{"JobId": 1, "Status": "Completed"}, {**sign_off, "Status": "Scheduled"}]
+            )
+        )
+        self.assertFalse(
+            group_all_jobs_completed(
+                [
+                    {"JobId": 1, "Status": "Completed"},
+                    {**sign_off, "Type": "Drainage Call Out", "Status": "Unscheduled"},
+                ]
+            )
+        )
+        jobs = [
+            completed_job(1, 50, "2026-09-02", Resource=""),
+            {
+                **sign_off,
+                "JobGroup": "GR/50",
+                "Created": "2026-09-02 11:00:00",
+                "Resource": "",
+            },
+        ]
+        docs = [invoice("i", 1, "2026-09-04", "200"), purchase("p", 1, "2026-09-04", "40")]
+        main, anomalies, _, contracts = build_staff_report(
+            jobs=jobs,
+            docs=docs,
+            category_id=ABI,
+            month_start=dt.date(2026, 9, 1),
+            month_end=dt.date(2026, 9, 30),
+            today=dt.date(2026, 9, 28),
+        )
+        self.assertEqual(anomalies, [])
+        self.assertEqual(contracts, [])
+        self.assertEqual(len(main), 1)
+        self.assertEqual(main[0]["sale"], D("200.00"))
 
     def test_anomaly_threshold(self) -> None:
         self.assertTrue(is_missing_po_anomaly(D("250.01"), D("0")))

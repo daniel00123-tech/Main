@@ -16,7 +16,7 @@ from .settings import (
     STAFF_BY_CATEGORY,
     inclusion_end,
 )
-from .util import as_int, clean_name, first_present, money, parse_datetime
+from .util import as_int, clean_name, compact_key, first_present, money, parse_datetime
 from .jobwatch import normalize_document
 
 D = __import__("decimal").Decimal
@@ -93,12 +93,36 @@ def job_created(job: dict[str, Any]) -> dt.datetime:
     return parsed
 
 
+def is_unscheduled_fire_audit_sign_off(job: dict[str, Any]) -> bool:
+    """Nirvana exception: an unscheduled Fire Audit Sign Off does not hold the group.
+
+    Any other open status, including a scheduled sign-off, still holds the group.
+    """
+    if job_status(job).lower() != "unscheduled":
+        return False
+    label = " ".join(
+        clean_name(first_present(job, (key,)))
+        for key in (
+            "Type",
+            "JobType",
+            "JobTypeName",
+            "TypeName",
+            "Category",
+            "CategoryName",
+            "JobCategory",
+        )
+    )
+    return "fireauditsignoff" in compact_key(label)
+
+
 def live_jobs(members: list[dict[str, Any]]) -> list[dict[str, Any]]:
     live = []
     for job in members:
         if is_cancelled_job(job):
             continue
         if job_status(job).lower() in CANCELLED_STATUSES:
+            continue
+        if is_unscheduled_fire_audit_sign_off(job):
             continue
         live.append(job)
     return live
