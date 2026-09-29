@@ -27,6 +27,8 @@ from zoneinfo import ZoneInfo
 
 try:
     from scripts.staff_commission import (
+        PROFILE_LAUREN,
+        PROFILE_UK,
         attach_job_commissions,
         gbp,
         money,
@@ -35,6 +37,8 @@ try:
     )
 except ImportError:  # python3 scripts/staff_profit_report.py
     from staff_commission import (  # type: ignore
+        PROFILE_LAUREN,
+        PROFILE_UK,
         attach_job_commissions,
         gbp,
         money,
@@ -48,9 +52,9 @@ ZERO = D("0")
 LONDON = ZoneInfo("Europe/London")
 
 STAFF = {
-    "sharon": {"name": "Sharon", "category_id": 132264},
-    "ella": {"name": "Ella", "category_id": 132225},
-    "lauren": {"name": "Lauren", "category_id": 132263},
+    "sharon": {"name": "Sharon", "category_id": 132264, "profile": PROFILE_UK},
+    "ella": {"name": "Ella", "category_id": 132225, "profile": PROFILE_UK},
+    "lauren": {"name": "Lauren", "category_id": 132263, "profile": PROFILE_LAUREN},
 }
 
 COMPLETED = {"completedOk", "completedWithIssues"}
@@ -58,7 +62,8 @@ ANOMALY_SALE = D("250")
 MIN_PO_AMOUNT = D("1")
 BEGINNING_OF_TIME = dt.date(2026, 5, 1)
 FROM_EMAIL = "ella@elvexpropertyservices.com"
-DEFAULT_MAIL_TO = "william@elvexpropertyservices.com"
+DEFAULT_MAIL_TO = "ella@elvexpropertyservices.com"
+DEFAULT_MAIL_CC = "william@elvexpropertyservices.com"
 
 
 def is_missing_po_anomaly(sale: D, po_cost: D) -> bool:
@@ -357,13 +362,19 @@ def graph_token() -> str:
     return token
 
 
-def send_graph_mail(subject: str, html_body: str, to_email: str) -> None:
+def send_graph_mail(
+    subject: str,
+    html_body: str,
+    to_email: str = DEFAULT_MAIL_TO,
+    cc_email: str = DEFAULT_MAIL_CC,
+) -> None:
     token = graph_token()
     payload = {
         "message": {
             "subject": subject,
             "body": {"contentType": "HTML", "content": html_body},
             "toRecipients": [{"emailAddress": {"address": to_email}}],
+            "ccRecipients": [{"emailAddress": {"address": cc_email}}],
         },
         "saveToSentItems": True,
     }
@@ -386,6 +397,74 @@ def send_graph_mail(subject: str, html_body: str, to_email: str) -> None:
 def month_bounds(year: int, month: int) -> tuple[dt.date, dt.date]:
     last = calendar.monthrange(year, month)[1]
     return dt.date(year, month, 1), dt.date(year, month, last)
+
+
+def current_london_month() -> tuple[int, int]:
+    now = dt.datetime.now(LONDON)
+    return now.year, now.month
+
+
+def _category_label(row: dict[str, Any]) -> str:
+    for key in ("label", "JobCategoryName", "CategoryName", "Name", "name"):
+        value = row.get(key)
+        if value not in (None, ""):
+            return str(value).strip()
+    return ""
+
+
+def _category_id(row: dict[str, Any]) -> int | None:
+    for key in ("id", "Id", "JobCategoryId", "CategoryId"):
+        value = row.get(key)
+        if value not in (None, ""):
+            return int(value)
+    return None
+
+
+def _category_rows(payload: Any) -> list[dict[str, Any]]:
+    if payload is None:
+        return []
+    if isinstance(payload, list):
+        return [row for row in payload if isinstance(row, dict)]
+    if not isinstance(payload, dict):
+        return []
+    for key in ("JobCategories", "Categories", "Items", "items"):
+        nested = payload.get(key)
+        if isinstance(nested, list):
+            return [row for row in nested if isinstance(row, dict)]
+    return []
+
+
+def lookup_category_id(name: str) -> int:
+    """Resolve a BigChange job category id by exact name. Do not guess."""
+    rows = _category_rows(legacy("JobCategories"))
+    needle = name.strip().lower()
+    matches: list[tuple[int, str]] = []
+    for row in rows:
+        label = _category_label(row)
+        cid = _category_id(row)
+        if cid is None or not label:
+            continue
+        if label.lower() == needle:
+            matches.append((cid, label))
+    unique = sorted({cid for cid, _label in matches})
+    if len(unique) == 1:
+        return unique[0]
+    if not unique:
+        raise ConfigError(f"No BigChange job category named {name!r}")
+    raise ConfigError(f"Ambiguous BigChange job category for {name!r}: {matches}")
+
+
+def resolve_staff(key: str) -> dict[str, Any]:
+    """Known staff use the mapped category id; anyone else is looked up, not guessed."""
+    normalized = key.strip().lower()
+    if normalized in STAFF:
+        return dict(STAFF[normalized])
+    category_id = lookup_category_id(key)
+    return {
+        "name": key.strip(),
+        "category_id": category_id,
+        "profile": PROFILE_UK,
+    }
 
 
 def build_staff_rows(
@@ -865,23 +944,25 @@ def load_report_data(
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    year, month = current_london_month()
     parser = argparse.ArgumentParser(description="Staff commission report")
-    parser.add_argument("--staff", choices=sorted(STAFF), default="sharon")
-    parser.add_argument("--year", type=int, default=2026)
-    parser.add_argument("--month", type=int, default=8)
+    parser.add_argument("--staff", default="lauren")
+    parser.add_argument("--year", type=int, default=year)
+    parser.add_argument("--month", type=int, default=month)
     parser.add_argument("--send", action="store_true", help="Email the report")
-    parser.add_argument("--to", default=os.environ.get("STAFF_PROFIT_MAIL_TO", DEFAULT_MAIL_TO))
+    parser.add_argument("--to", default=DEFAULT_MAIL_TO)
+    parser.add_argument("--cc", default=DEFAULT_MAIL_CC)
     parser.add_argument("--out", default="")
     return parser.parse_args(argv)
 
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
-    staff = STAFF[args.staff]
+    staff = resolve_staff(args.staff)
     month_start, month_end = month_bounds(args.year, args.month)
     month_label = month_start.strftime("%B %Y")
     main_rows, anomaly_rows = load_report_data(staff["category_id"], month_start, month_end)
-    job_rows = attach_job_commissions(main_rows)
+    job_rows = attach_job_commissions(main_rows, profile=staff["profile"])
     html_body = build_html(
         staff_name=staff["name"],
         month_label=month_label,
@@ -916,10 +997,10 @@ def main(argv: list[str] | None = None) -> int:
     if args.send:
         subject = f"{staff['name']} — {month_label} — commission report"
         try:
-            send_graph_mail(subject, html_body, args.to)
+            send_graph_mail(subject, html_body, DEFAULT_MAIL_TO, DEFAULT_MAIL_CC)
         except Exception:
             time.sleep(2)
-            send_graph_mail(subject, html_body, args.to)
+            send_graph_mail(subject, html_body, DEFAULT_MAIL_TO, DEFAULT_MAIL_CC)
     return 0
 
 
