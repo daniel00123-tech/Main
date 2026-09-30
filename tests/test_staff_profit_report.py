@@ -84,6 +84,8 @@ class HtmlReportTest(unittest.TestCase):
         self.assertIn("commission report", body)
         self.assertIn(">Date</th>", body)
         self.assertIn("Group / job", body)
+        self.assertIn("Purchase orders", body)
+        self.assertIn("Labor", body)
         self.assertIn("Commission", body)
         self.assertIn("Run profit", body)
         self.assertIn("Run comm.", body)

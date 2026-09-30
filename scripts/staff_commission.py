@@ -219,7 +219,8 @@ def attach_job_commissions(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     running_commission = ZERO
     attached: list[dict[str, Any]] = []
     for row in rows:
-        result = calculate_job_commission(row["sale"], row["profit"], cost=row.get("cost"))
+        direct_cost = as_decimal(row.get("cost")) + as_decimal(row.get("labor"))
+        result = calculate_job_commission(row["sale"], row["profit"], cost=direct_cost)
         running_profit += row["profit"]
         running_commission += result.commission
         attached.append(
