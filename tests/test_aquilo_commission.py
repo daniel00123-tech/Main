@@ -16,19 +16,26 @@ from scripts.aquilo_commission.commission import (
     sum_job_commissions,
 )
 from scripts.aquilo_commission.engine import (
+    attach_docs_to_groups,
     build_staff_report,
     first_job,
     group_all_jobs_completed,
     group_owner_category_id,
+    index_jobs,
     is_excluded_pack_category,
     is_missing_po_anomaly,
     job_group_reference,
+    resolve_po_cost,
 )
 from scripts.aquilo_commission.jobwatch import (
     classify_doc,
     document_is_dropped,
+    document_net,
+    job_lines_cost,
+    line_cost_only,
     line_net,
     normalize_document,
+    sale_line_costs,
 )
 from scripts.aquilo_commission.labour import (
     attracts_labour,
@@ -246,6 +253,25 @@ class NetAndDocumentTest(unittest.TestCase):
         self.assertEqual(normalised["kind"], "invoice")
         self.assertEqual(normalised["net_ex_vat"], D("100"))
 
+    def test_po_without_lines_uses_header_cost(self) -> None:
+        doc = {
+            "OrderType": "PurchaseOrder",
+            "DocumentId": "37984494",
+            "JobId": "199379745",
+            "DocumentDate": "2026-09-18",
+            "CostPrice": "600",
+            "SyncStatus": "Unsent",
+        }
+        normalised = normalize_document(doc)
+        assert normalised is not None
+        self.assertEqual(normalised["net_ex_vat"], D("600"))
+        self.assertEqual(document_net(doc, "po"), D("600"))
+
+    def test_invoice_line_cost_ignores_selling_price(self) -> None:
+        line = {"CostPrice": "600", "UnitPrice": "850", "LineQuantity": "1"}
+        self.assertEqual(line_cost_only(line), D("600"))
+        self.assertEqual(job_lines_cost([line]), D("600"))
+
     def test_credit_keeps_api_sign(self) -> None:
         doc = {
             "OrderType": "CreditNote",
@@ -419,6 +445,63 @@ class OwnershipAndHoldTest(unittest.TestCase):
         self.assertFalse(is_missing_po_anomaly(D("250"), D("0")))
         self.assertFalse(is_missing_po_anomaly(D("251"), D("1")))
 
+    def test_invoice_costprice_recovers_missing_po(self) -> None:
+        docs = [
+            {
+                "kind": "invoice",
+                "net_ex_vat": D("850"),
+                "raw": {
+                    "OrderType": "Invoice",
+                    "lines": [
+                        {
+                            "UnitPrice": 850.0,
+                            "CostPrice": 600.0,
+                            "LineQuantity": 1.0,
+                            "NetPrice": 1020.0,
+                        }
+                    ],
+                },
+            }
+        ]
+        self.assertEqual(sale_line_costs(docs), D("600.0"))
+        self.assertEqual(resolve_po_cost(docs), D("600.00"))
+
+    def test_po_document_wins_over_invoice_costprice(self) -> None:
+        docs = [
+            {"kind": "po", "net_ex_vat": D("600.00"), "raw": {}},
+            {
+                "kind": "invoice",
+                "net_ex_vat": D("850"),
+                "raw": {"lines": [{"UnitPrice": 850.0, "CostPrice": 600.0, "LineQuantity": 1}]},
+            },
+        ]
+        self.assertEqual(resolve_po_cost(docs), D("600.00"))
+
+    def test_group_only_po_still_attaches(self) -> None:
+        jobs = [
+            {
+                "JobId": 199379745,
+                "JobGroupId": 21997013,
+                "JobGroupReference": "GR/18831",
+            }
+        ]
+        by_id, by_group = index_jobs(jobs)
+        docs = [
+            {
+                "OrderType": "PurchaseOrder",
+                "DocumentId": "37984494",
+                "JobId": "",
+                "JobGroupId": "21997013",
+                "DocumentDate": "2026-09-18",
+                "CostPrice": "600",
+                "LineQuantity": "1",
+            }
+        ]
+        attached = attach_docs_to_groups(docs, by_id, known_groups=set(by_group))
+        self.assertEqual(len(attached[21997013]), 1)
+        self.assertEqual(attached[21997013][0]["kind"], "po")
+        self.assertEqual(attached[21997013][0]["net_ex_vat"], D("600"))
+
 
 def job_id_safe(job):
     return int(job["JobId"])
@@ -516,6 +599,98 @@ class ReportAssemblyTest(unittest.TestCase):
         self.assertEqual(len(anomalies), 1)
         self.assertEqual(anomalies[0]["reference"], "GR/99")
         self.assertIn("purchase order", anomalies[0]["reason"].lower())
+
+    def test_unsent_po_miss_uses_invoice_cost_for_gr_18831(self) -> None:
+        """AFPO15723 was Unsent / Awaiting sync. Sale still carries CostPrice £600."""
+        jobs = [
+            {
+                "JobId": 199379745,
+                "JobGroupId": 21997013,
+                "JobGroupReference": "GR/18831",
+                "JobCategoryId": 129522,
+                "Category": "Laura Menegon",
+                "Created": "2026-09-18 13:05:00",
+                "Status": "Completed",
+                "Resource": "z. Winston Carter",
+                "ResourceGroup": "Subcontractor",
+                "Type": "Electrical Call Out",
+                "PlannedStart": "2026-09-18 16:30:00",
+                "PlannedDurationHours": "2",
+            }
+        ]
+        docs = [
+            {
+                "OrderType": "Invoice",
+                "DocumentId": "38099889",
+                "DocumentReference": "INV-14709",
+                "JobId": "199379745",
+                "JobGroupId": "",
+                "DocumentDate": "2026-09-24",
+                "lines": [
+                    {
+                        "LineQuantity": 1.0,
+                        "UnitPrice": 850.0,
+                        "UnitDiscount": 0.0,
+                        "CostPrice": 600.0,
+                        "NetPrice": 1020.0,
+                    }
+                ],
+            }
+        ]
+        main, anomalies, _review = build_staff_report(
+            jobs=jobs,
+            docs=docs,
+            category_id=129522,
+            month_start=dt.date(2026, 9, 1),
+            month_end=dt.date(2026, 9, 30),
+            today=dt.date(2026, 9, 28),
+        )
+        self.assertEqual(anomalies, [])
+        self.assertEqual(len(main), 1)
+        self.assertEqual(main[0]["reference"], "GR/18831")
+        self.assertEqual(main[0]["sale"], D("850.00"))
+        self.assertEqual(main[0]["cost"], D("600.00"))
+        self.assertEqual(main[0]["labour"], D("0.00"))
+        self.assertEqual(main[0]["profit"], D("250.00"))
+
+    def test_job_card_cost_loader_fills_when_invoice_has_no_cost(self) -> None:
+        jobs = [
+            {
+                "JobId": 10,
+                "JobGroupId": 88,
+                "JobGroupReference": "GR/88",
+                "JobCategoryId": 129522,
+                "Category": "Laura Menegon",
+                "Created": "2026-09-01",
+                "Status": "Completed",
+                "Resource": "Office Admin",
+                "ResourceGroup": "Office",
+                "PlannedStart": "2026-09-01 09:00:00",
+                "PlannedDurationHours": "1",
+            }
+        ]
+        docs = [
+            {
+                "OrderType": "Invoice",
+                "DocumentId": "inv",
+                "JobId": "10",
+                "DocumentDate": "2026-09-10",
+                "UnitPrice": "400",
+                "CostPrice": "0",
+                "LineQuantity": "1",
+            }
+        ]
+        main, anomalies, _ = build_staff_report(
+            jobs=jobs,
+            docs=docs,
+            category_id=129522,
+            month_start=dt.date(2026, 9, 1),
+            month_end=dt.date(2026, 9, 30),
+            today=dt.date(2026, 9, 28),
+            job_cost_loader=lambda job_id: D("180") if job_id == 10 else D("0"),
+        )
+        self.assertEqual(anomalies, [])
+        self.assertEqual(main[0]["cost"], D("180.00"))
 
     def test_open_job_or_other_month_excluded(self) -> None:
         jobs = [

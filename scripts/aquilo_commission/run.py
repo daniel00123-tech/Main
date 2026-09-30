@@ -16,6 +16,7 @@ from .jobwatch import (
     AquiloJobWatchClient,
     fetch_finance_history,
     fetch_jobs_history,
+    job_lines_cost,
     resource_group_map,
 )
 from .mail import send_preview_email
@@ -83,6 +84,13 @@ def build_month_packs(
     groups = resource_group_map(client)
     print("resource_map", len(groups), flush=True)
 
+    job_line_cost_cache: dict[int, Any] = {}
+
+    def job_cost_loader(job_id: int) -> Any:
+        if job_id not in job_line_cost_cache:
+            job_line_cost_cache[job_id] = job_lines_cost(client.job_financial_lines(job_id))
+        return job_line_cost_cache[job_id]
+
     packs: dict[str, dict[str, Any]] = {}
     month_label = month_start.strftime("%B %Y")
     preview = not settings.go_live
@@ -96,6 +104,7 @@ def build_month_packs(
             month_end=month_end,
             today=today,
             resource_groups=groups,
+            job_cost_loader=job_cost_loader,
         )
         job_rows = attach_job_commissions(main_rows)
         qualification = qualify_rows(job_rows)

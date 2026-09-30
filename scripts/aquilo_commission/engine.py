@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import datetime as dt
 from collections import defaultdict
+from collections.abc import Callable
 from typing import Any
 
 from .labour import compute_job_labour, is_cancelled_job
@@ -16,7 +17,7 @@ from .settings import (
     inclusion_end,
 )
 from .util import as_int, clean_name, first_present, money, parse_datetime
-from .jobwatch import normalize_document
+from .jobwatch import normalize_document, sale_line_costs
 
 D = __import__("decimal").Decimal
 ZERO = D("0")
@@ -149,23 +150,51 @@ def index_jobs(raw_jobs: list[dict[str, Any]]) -> tuple[dict[int, dict[str, Any]
 def attach_docs_to_groups(
     docs: list[dict[str, Any]],
     jobs_by_id: dict[int, dict[str, Any]],
+    known_groups: set[int] | None = None,
 ) -> dict[int, list[dict[str, Any]]]:
-    """Prefer JobId. JobGroupId is often blank on POs. Dedupe by documentId."""
+    """Prefer JobId, then JobGroupId. JobGroupId is often blank on POs."""
+    groups = known_groups if known_groups is not None else {
+        int(job["_group_id"]) for job in jobs_by_id.values() if job.get("_group_id")
+    }
     grouped: dict[int, dict[str, dict[str, Any]]] = defaultdict(dict)
     for raw in docs:
-        normalised = normalize_document(raw)
+        normalised = raw if raw.get("kind") and "net_ex_vat" in raw and "raw" in raw else normalize_document(raw)
         if not normalised:
             continue
-        jid = normalised["job_id"]
-        if not jid or jid not in jobs_by_id:
-            continue
-        job = jobs_by_id[jid]
-        gid = job.get("_group_id")
+        gid = None
+        jid = normalised.get("job_id")
+        if jid and jid in jobs_by_id:
+            gid = jobs_by_id[jid].get("_group_id")
+        if not gid:
+            doc_gid = normalised.get("group_id")
+            if doc_gid and int(doc_gid) in groups:
+                gid = int(doc_gid)
         if not gid:
             continue
         key = normalised["document_id"] or f"{normalised['kind']}:{jid}:{normalised['document_date']}:{normalised['net_ex_vat']}"
         grouped[int(gid)][key] = normalised
     return {gid: list(bucket.values()) for gid, bucket in grouped.items()}
+
+
+def resolve_po_cost(
+    group_docs: list[dict[str, Any]],
+    *,
+    fallback_cost: D | None = None,
+) -> D:
+    """PO documents first. If they are missing, use invoice-line / job-card CostPrice.
+
+    Unsent POs (Awaiting sync) can drop out of InvoicesWithItemsByPeriod while the
+    invoice still carries the same CostPrice as the job Financial tab.
+    """
+    po = sum_kind(group_docs, {"po"})
+    if abs(po) >= MIN_PO_AMOUNT:
+        return po
+    invoice_cost = money(sale_line_costs(group_docs))
+    if abs(invoice_cost) >= MIN_PO_AMOUNT:
+        return invoice_cost
+    if fallback_cost is not None and abs(fallback_cost) >= MIN_PO_AMOUNT:
+        return money(fallback_cost)
+    return po
 
 
 def last_invoice_date(docs: list[dict[str, Any]]) -> dt.date | None:
@@ -186,13 +215,14 @@ def build_staff_report(
     month_end: dt.date,
     today: dt.date,
     resource_groups: dict[str, str] | None = None,
+    job_cost_loader: Callable[[int], D] | None = None,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
     """Grouped jobs only. One row per JobGroupId owned by the AM."""
     if category_id not in STAFF_BY_CATEGORY:
         return [], [], []
 
     jobs_by_id, by_group = index_jobs(jobs)
-    docs_by_group = attach_docs_to_groups(docs, jobs_by_id)
+    docs_by_group = attach_docs_to_groups(docs, jobs_by_id, known_groups=set(by_group))
 
     # Labour is computed across all jobs (day engine is per engineer per day),
     # then rolled into the group row.
@@ -223,7 +253,12 @@ def build_staff_report(
             continue
 
         sale = sum_kind(group_docs, {"invoice", "credit"})
-        po = sum_kind(group_docs, {"po"})
+        po = resolve_po_cost(group_docs)
+        if is_missing_po_anomaly(sale, po) and job_cost_loader is not None:
+            fallback = money(
+                sum((job_cost_loader(jid) for jid in (job_id_of(m) for m in members) if jid), ZERO)
+            )
+            po = resolve_po_cost(group_docs, fallback_cost=fallback)
         labour = money(sum((labour_by_job.get(job_id_of(m), ZERO) for m in members), ZERO))
         profit = money(sale - po - labour)
         margin = (profit / sale * D("100")) if sale != 0 else None

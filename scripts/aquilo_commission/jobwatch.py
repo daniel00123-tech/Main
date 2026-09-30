@@ -161,6 +161,16 @@ class AquiloJobWatchClient:
             raise JobWatchError(f"InvoicesWithItemsByPeriod failed Code={payload.get('Code')}")
         return extract_documents(payload)
 
+    def job_financial_lines(self, job_id: str | int) -> list[dict[str, Any]]:
+        """Job-card invoice items (cost / selling). GET-only. Empty on failure."""
+        try:
+            payload = self.get("JobFinancialLines", {"JobId": str(job_id)}, attempts=2)
+        except JobWatchError:
+            return []
+        if not self.ok(payload):
+            return []
+        return self.result_rows(payload)
+
     def resources(self) -> list[dict[str, Any]]:
         for action in ("Resources", "ResourceList"):
             try:
@@ -240,14 +250,46 @@ def document_job_id(document: dict[str, Any]) -> int | None:
     return as_int(first_present(document, ("JobId", "JobID", "LinkedJobId", "LinkedJobID")))
 
 
+def document_group_id(document: dict[str, Any]) -> int | None:
+    return as_int(first_present(document, ("JobGroupId", "GroupId")))
+
+
 def document_date(document: dict[str, Any]) -> dt.date | None:
     return parse_date(first_present(document, DATE_FIELDS), LONDON)
 
 
-def line_net(line: dict[str, Any], kind: str) -> Any:
+def line_quantity(line: dict[str, Any]) -> Any:
     qty = as_decimal(first_present(line, ("LineQuantity", "Quantity", "Qty")))
     if first_present(line, ("LineQuantity", "Quantity", "Qty")) in (None, ""):
-        qty = as_decimal("1")
+        return as_decimal("1")
+    return qty
+
+
+def line_cost_only(line: dict[str, Any]) -> Any:
+    """CostPrice × qty. Never fall back to selling price."""
+    cost = as_decimal(first_present(line, ("CostPrice", "UnitCost", "DefaultCost")))
+    return cost * line_quantity(line)
+
+
+def job_lines_cost(lines: list[dict[str, Any]]) -> Any:
+    return sum((line_cost_only(line) for line in lines), as_decimal(0))
+
+
+def sale_line_costs(docs: list[dict[str, Any]]) -> Any:
+    """CostPrice on invoice / credit lines — the job-card cost copied onto the sale."""
+    total = as_decimal(0)
+    for doc in docs:
+        if doc.get("kind") not in {"invoice", "credit"}:
+            continue
+        raw = doc.get("raw")
+        if not isinstance(raw, dict):
+            continue
+        total += job_lines_cost(extract_lines(raw))
+    return total
+
+
+def line_net(line: dict[str, Any], kind: str) -> Any:
+    qty = line_quantity(line)
     if kind in {"invoice", "credit"}:
         unit = as_decimal(first_present(line, ("UnitPrice", "UnitSellingPrice")))
         discount = as_decimal(first_present(line, ("UnitDiscount", "Discount", "LineDiscount")))
@@ -257,11 +299,26 @@ def line_net(line: dict[str, Any], kind: str) -> Any:
     return (cost if cost != 0 else unit) * qty
 
 
+def header_net(document: dict[str, Any], kind: str) -> Any:
+    if kind == "po":
+        return as_decimal(
+            first_present(
+                document,
+                ("CostPrice", "TotalCost", "NetExVat", "TotalExVat", "AmountExVat"),
+            )
+        )
+    return as_decimal(
+        first_present(document, ("NetExVat", "TotalExVat", "AmountExVat", "UnitPrice"))
+    )
+
+
 def document_net(document: dict[str, Any], kind: str) -> Any:
     lines = extract_lines(document)
-    if not lines:
-        return as_decimal(0)
-    return sum((line_net(line, kind) for line in lines), as_decimal(0))
+    if lines:
+        total = sum((line_net(line, kind) for line in lines), as_decimal(0))
+        if total != 0:
+            return total
+    return header_net(document, kind)
 
 
 def normalize_document(document: dict[str, Any]) -> dict[str, Any] | None:
@@ -274,6 +331,7 @@ def normalize_document(document: dict[str, Any]) -> dict[str, Any] | None:
     return {
         "document_id": document_id(document),
         "job_id": document_job_id(document),
+        "group_id": document_group_id(document),
         "kind": kind,
         "document_date": when,
         "net_ex_vat": document_net(document, kind),
