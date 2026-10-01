@@ -58,7 +58,8 @@ ANOMALY_SALE = D("250")
 MIN_PO_AMOUNT = D("1")
 BEGINNING_OF_TIME = dt.date(2026, 5, 1)
 FROM_EMAIL = "ella@elvexpropertyservices.com"
-DEFAULT_MAIL_TO = "william@elvexpropertyservices.com"
+DEFAULT_MAIL_TO = "sharon@elvexpropertyservices.com"
+DEFAULT_MAIL_CC = "ella@elvexpropertyservices.com"
 
 
 def is_missing_po_anomaly(sale: D, po_cost: D) -> bool:
@@ -357,16 +358,27 @@ def graph_token() -> str:
     return token
 
 
-def send_graph_mail(subject: str, html_body: str, to_email: str) -> None:
-    token = graph_token()
-    payload = {
+def graph_mail_payload(subject: str, html_body: str, to_email: str, cc_email: str) -> dict[str, Any]:
+    """Always To + CC. Same recipients for every staff member."""
+    return {
         "message": {
             "subject": subject,
             "body": {"contentType": "HTML", "content": html_body},
             "toRecipients": [{"emailAddress": {"address": to_email}}],
+            "ccRecipients": [{"emailAddress": {"address": cc_email}}],
         },
         "saveToSentItems": True,
     }
+
+
+def send_graph_mail(
+    subject: str,
+    html_body: str,
+    to_email: str = DEFAULT_MAIL_TO,
+    cc_email: str = DEFAULT_MAIL_CC,
+) -> None:
+    token = graph_token()
+    payload = graph_mail_payload(subject, html_body, to_email, cc_email)
     raw = json.dumps(payload).encode()
     req = urllib.request.Request(
         f"https://graph.microsoft.com/v1.0/users/{urllib.parse.quote(FROM_EMAIL)}/sendMail",
@@ -386,6 +398,122 @@ def send_graph_mail(subject: str, html_body: str, to_email: str) -> None:
 def month_bounds(year: int, month: int) -> tuple[dt.date, dt.date]:
     last = calendar.monthrange(year, month)[1]
     return dt.date(year, month, 1), dt.date(year, month, last)
+
+
+def london_today() -> dt.date:
+    return dt.datetime.now(LONDON).date()
+
+
+def current_month_bounds(today: dt.date | None = None) -> tuple[dt.date, dt.date]:
+    day = today or london_today()
+    return month_bounds(day.year, day.month)
+
+
+def assert_send_month_is_current(month_start: dt.date, today: dt.date | None = None) -> None:
+    """Do not email a past or future month. Current calendar month only."""
+    day = today or london_today()
+    if (month_start.year, month_start.month) != (day.year, day.month):
+        raise ConfigError(
+            f"Refusing to email {month_start.strftime('%B %Y')}; "
+            f"current month is {day.strftime('%B %Y')}"
+        )
+
+
+def normalize_staff_key(name: str) -> str:
+    return name.strip().lower()
+
+
+def category_row_name(row: dict[str, Any]) -> str:
+    for key in ("label", "JobCategoryName", "CategoryName", "Name", "name"):
+        val = row.get(key)
+        if val not in (None, ""):
+            return str(val).strip()
+    return ""
+
+
+def category_row_id(row: dict[str, Any]) -> int | None:
+    for key in ("id", "Id", "JobCategoryId", "CategoryId", "JobCategoryID"):
+        val = row.get(key)
+        if val not in (None, ""):
+            try:
+                return int(val)
+            except (TypeError, ValueError):
+                continue
+    return None
+
+
+def category_rows_from_result(result: Any) -> list[dict[str, Any]]:
+    if isinstance(result, list):
+        return [row for row in result if isinstance(row, dict)]
+    if isinstance(result, dict):
+        for key in ("JobCategories", "Categories", "Items", "items"):
+            if key in result:
+                return category_rows_from_result(result[key])
+        nested: list[dict[str, Any]] = []
+        for value in result.values():
+            if isinstance(value, list):
+                nested.extend(row for row in value if isinstance(row, dict))
+        if nested:
+            return nested
+        return [result]
+    return []
+
+
+def match_category_id(name: str, rows: list[dict[str, Any]]) -> int:
+    """Resolve a staff job category id from BigChange rows. Never guess."""
+    wanted = normalize_staff_key(name)
+    if not wanted:
+        raise ConfigError("Staff name is required to look up a job category id")
+    exact: list[tuple[int, str]] = []
+    first_token: list[tuple[int, str]] = []
+    for row in rows:
+        label = category_row_name(row)
+        cid = category_row_id(row)
+        if not label or cid is None:
+            continue
+        key = normalize_staff_key(label)
+        if key == wanted:
+            exact.append((cid, label))
+            continue
+        token = normalize_staff_key(label.split()[0])
+        if token == wanted:
+            first_token.append((cid, label))
+    matches = exact or first_token
+    unique_ids = {cid for cid, _label in matches}
+    if len(unique_ids) == 1:
+        return next(iter(unique_ids))
+    if not matches:
+        raise ConfigError(f"No BigChange job category named {name!r}")
+    labels = ", ".join(sorted({label for _cid, label in matches}))
+    raise ConfigError(f"Ambiguous BigChange job category for {name!r}: {labels}")
+
+
+def lookup_staff_category_id(name: str) -> int:
+    return match_category_id(name, category_rows_from_result(legacy("JobCategories")))
+
+
+def resolve_staff(name: str, category_id: int | None = None) -> dict[str, Any]:
+    """Known map first. Otherwise look up the BigChange job category id."""
+    key = normalize_staff_key(name)
+    if not key:
+        raise ConfigError("Staff name is required")
+    known = STAFF.get(key)
+    if known is None:
+        for meta in STAFF.values():
+            if normalize_staff_key(meta["name"]) == key:
+                known = meta
+                break
+    if known is not None:
+        if category_id is not None and int(category_id) != int(known["category_id"]):
+            raise ConfigError(
+                f"{known['name']} is mapped to category {known['category_id']}, not {category_id}"
+            )
+        return {"name": known["name"], "category_id": int(known["category_id"])}
+    resolved_id = int(category_id) if category_id is not None else lookup_staff_category_id(name)
+    display = name.strip()
+    if display.lower() == key:
+        display = display.title()
+    return {"name": display, "category_id": resolved_id}
 
 
 def build_staff_rows(
@@ -865,21 +993,38 @@ def load_report_data(
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    today = london_today()
     parser = argparse.ArgumentParser(description="Staff commission report")
-    parser.add_argument("--staff", choices=sorted(STAFF), default="sharon")
-    parser.add_argument("--year", type=int, default=2026)
-    parser.add_argument("--month", type=int, default=8)
+    parser.add_argument("--staff", default="sharon", help="Staff first name (same engine for every person)")
+    parser.add_argument(
+        "--category-id",
+        type=int,
+        default=None,
+        help="BigChange job category id when the name is not in the known map",
+    )
+    parser.add_argument("--year", type=int, default=None, help="Defaults to the current London calendar year")
+    parser.add_argument("--month", type=int, default=None, help="Defaults to the current London calendar month")
     parser.add_argument("--send", action="store_true", help="Email the report")
     parser.add_argument("--to", default=os.environ.get("STAFF_PROFIT_MAIL_TO", DEFAULT_MAIL_TO))
+    parser.add_argument("--cc", default=os.environ.get("STAFF_PROFIT_MAIL_CC", DEFAULT_MAIL_CC))
     parser.add_argument("--out", default="")
-    return parser.parse_args(argv)
+    args = parser.parse_args(argv)
+    if args.year is None and args.month is None:
+        args.year, args.month = today.year, today.month
+    elif args.year is None:
+        args.year = today.year
+    elif args.month is None:
+        args.month = today.month
+    return args
 
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
-    staff = STAFF[args.staff]
+    staff = resolve_staff(args.staff, args.category_id)
     month_start, month_end = month_bounds(args.year, args.month)
     month_label = month_start.strftime("%B %Y")
+    if args.send:
+        assert_send_month_is_current(month_start)
     main_rows, anomaly_rows = load_report_data(staff["category_id"], month_start, month_end)
     job_rows = attach_job_commissions(main_rows)
     html_body = build_html(
@@ -895,6 +1040,7 @@ def main(argv: list[str] | None = None) -> int:
     print(
         {
             "staff": staff["name"],
+            "category_id": staff["category_id"],
             "month": month_label,
             "rows": len(job_rows),
             "sale": str(total_sale),
@@ -904,7 +1050,8 @@ def main(argv: list[str] | None = None) -> int:
             "anomalies": len(anomaly_rows),
         }
     )
-    out_path = args.out or f"/tmp/{args.staff}_{month_start.strftime('%Y_%m')}_commission.html"
+    staff_slug = normalize_staff_key(staff["name"]).replace(" ", "_")
+    out_path = args.out or f"/tmp/{staff_slug}_{month_start.strftime('%Y_%m')}_commission.html"
     with open(out_path, "w") as handle:
         handle.write(
             "<!doctype html><html><head><meta charset='utf-8'>"
@@ -916,10 +1063,10 @@ def main(argv: list[str] | None = None) -> int:
     if args.send:
         subject = f"{staff['name']} — {month_label} — commission report"
         try:
-            send_graph_mail(subject, html_body, args.to)
+            send_graph_mail(subject, html_body, args.to, args.cc)
         except Exception:
             time.sleep(2)
-            send_graph_mail(subject, html_body, args.to)
+            send_graph_mail(subject, html_body, args.to, args.cc)
     return 0
 
 
