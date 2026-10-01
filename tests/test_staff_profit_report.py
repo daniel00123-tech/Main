@@ -8,13 +8,22 @@ from scripts.staff_commission import (
     sum_job_commissions,
 )
 from scripts.staff_profit_report import (
+    DEFAULT_MAIL_CC,
+    DEFAULT_MAIL_TO,
     RUN_EDGE,
+    ConfigError,
+    assert_send_month_is_current,
     build_html,
     build_staff_rows,
     commission_style,
+    current_month_bounds,
     daily_totals,
+    graph_mail_payload,
     is_missing_po_anomaly,
     iter_display_rows,
+    match_category_id,
+    parse_args,
+    resolve_staff,
 )
 
 
@@ -497,6 +506,68 @@ class CompleteGroupReportingTest(unittest.TestCase):
         self.assertEqual(anomaly_rows, [])
         self.assertEqual(main_rows[0]["sale"], D("120.00"))
         self.assertEqual(main_rows[0]["cost"], D("0.00"))
+
+
+class CurrentMonthAndRecipientsTest(unittest.TestCase):
+    def test_defaults_are_current_london_month_and_fixed_to_cc(self) -> None:
+        october_start, october_end = current_month_bounds(dt.date(2026, 10, 1))
+        self.assertEqual(october_start, dt.date(2026, 10, 1))
+        self.assertEqual(october_end, dt.date(2026, 10, 31))
+        live_start, _live_end = current_month_bounds()
+        args = parse_args([])
+        self.assertEqual(DEFAULT_MAIL_TO, "sharon@elvexpropertyservices.com")
+        self.assertEqual(DEFAULT_MAIL_CC, "ella@elvexpropertyservices.com")
+        self.assertEqual(args.to, DEFAULT_MAIL_TO)
+        self.assertEqual(args.cc, DEFAULT_MAIL_CC)
+        self.assertEqual(args.staff, "sharon")
+        self.assertEqual((args.year, args.month), (live_start.year, live_start.month))
+        self.assertNotEqual((args.year, args.month), (2026, 8))
+
+    def test_refuses_to_email_a_past_month(self) -> None:
+        with self.assertRaises(ConfigError):
+            assert_send_month_is_current(dt.date(2026, 8, 1), today=dt.date(2026, 10, 1))
+        assert_send_month_is_current(dt.date(2026, 10, 1), today=dt.date(2026, 10, 15))
+
+    def test_mail_payload_always_includes_to_and_cc(self) -> None:
+        payload = graph_mail_payload(
+            "Sharon — October 2026 — commission report",
+            "<p>ok</p>",
+            DEFAULT_MAIL_TO,
+            DEFAULT_MAIL_CC,
+        )
+        self.assertTrue(payload["saveToSentItems"])
+        self.assertEqual(
+            payload["message"]["toRecipients"][0]["emailAddress"]["address"],
+            "sharon@elvexpropertyservices.com",
+        )
+        self.assertEqual(
+            payload["message"]["ccRecipients"][0]["emailAddress"]["address"],
+            "ella@elvexpropertyservices.com",
+        )
+
+    def test_known_staff_uses_mapped_category_and_does_not_guess(self) -> None:
+        self.assertEqual(resolve_staff("Sharon")["category_id"], 132264)
+        self.assertEqual(resolve_staff("ella")["name"], "Ella")
+        self.assertEqual(resolve_staff("Lauren", 132263)["category_id"], 132263)
+        with self.assertRaises(ConfigError):
+            resolve_staff("Sharon", 999)
+
+    def test_unknown_staff_looks_up_category_id_and_rejects_ambiguity(self) -> None:
+        rows = [
+            {"Id": 132264, "Name": "Sharon"},
+            {"id": 200001, "JobCategoryName": "Amy Bradley"},
+            {"Id": 200002, "Name": "Pat One"},
+            {"Id": 200003, "Name": "Pat Two"},
+        ]
+        self.assertEqual(match_category_id("Amy", rows), 200001)
+        self.assertEqual(match_category_id("amy bradley", rows), 200001)
+        with self.assertRaises(ConfigError):
+            match_category_id("Pat", rows)
+        with self.assertRaises(ConfigError):
+            match_category_id("Nobody", rows)
+        resolved = resolve_staff("Amy Bradley", 200001)
+        self.assertEqual(resolved["category_id"], 200001)
+        self.assertEqual(resolved["name"], "Amy Bradley")
 
 
 if __name__ == "__main__":
