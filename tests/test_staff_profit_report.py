@@ -1,20 +1,33 @@
 import datetime as dt
 import decimal
+import inspect
 import unittest
+import unittest.mock
 
 from scripts.staff_commission import (
+    PROFILE_LAUREN,
+    PROFILE_UK,
     attach_job_commissions,
     calculate_job_commission,
     sum_job_commissions,
 )
 from scripts.staff_profit_report import (
+    DEFAULT_MAIL_CC,
+    DEFAULT_MAIL_TO,
+    LONDON,
     RUN_EDGE,
+    STAFF,
+    _category_rows,
     build_html,
     build_staff_rows,
     commission_style,
     daily_totals,
     is_missing_po_anomaly,
     iter_display_rows,
+    lookup_category_id,
+    parse_args,
+    resolve_staff,
+    send_graph_mail,
 )
 
 
@@ -497,6 +510,54 @@ class CompleteGroupReportingTest(unittest.TestCase):
         self.assertEqual(anomaly_rows, [])
         self.assertEqual(main_rows[0]["sale"], D("120.00"))
         self.assertEqual(main_rows[0]["cost"], D("0.00"))
+
+
+class LaurenReportWiringTest(unittest.TestCase):
+    def test_lauren_uses_south_africa_profile_sharon_and_ella_stay_uk(self) -> None:
+        self.assertEqual(STAFF["lauren"]["category_id"], 132263)
+        self.assertEqual(STAFF["lauren"]["profile"], PROFILE_LAUREN)
+        self.assertEqual(STAFF["sharon"]["profile"], PROFILE_UK)
+        self.assertEqual(STAFF["ella"]["profile"], PROFILE_UK)
+        self.assertEqual(resolve_staff("Lauren")["profile"], PROFILE_LAUREN)
+        self.assertEqual(resolve_staff("sharon")["category_id"], 132264)
+
+    def test_default_month_is_current_london_calendar_month(self) -> None:
+        args = parse_args([])
+        now = dt.datetime.now(LONDON)
+        self.assertEqual(args.staff, "lauren")
+        self.assertEqual(args.year, now.year)
+        self.assertEqual(args.month, now.month)
+
+    def test_email_always_goes_to_ella_and_ccs_william(self) -> None:
+        self.assertEqual(DEFAULT_MAIL_TO, "ella@elvexpropertyservices.com")
+        self.assertEqual(DEFAULT_MAIL_CC, "william@elvexpropertyservices.com")
+        source = inspect.getsource(send_graph_mail)
+        self.assertIn("ccRecipients", source)
+        self.assertIn("saveToSentItems", source)
+
+    def test_attach_on_lauren_rows_uses_stepped_minus(self) -> None:
+        jobs = attach_job_commissions(
+            [_job(dt.date(2026, 9, 4), "GR/429", "800", "-89", cost="889")],
+            profile=PROFILE_LAUREN,
+        )
+        self.assertEqual(jobs[0]["commission"], D("-5.00"))
+
+    def test_category_lookup_requires_an_exact_name(self) -> None:
+        rows = _category_rows(
+            {"JobCategories": [{"Id": 132263, "Name": "Lauren"}, {"id": 9, "label": "Other"}]}
+        )
+        self.assertEqual(len(rows), 2)
+        with unittest.mock.patch(
+            "scripts.staff_profit_report.legacy",
+            return_value=[{"Id": 132263, "Name": "Lauren"}],
+        ):
+            self.assertEqual(lookup_category_id("Lauren"), 132263)
+        with unittest.mock.patch(
+            "scripts.staff_profit_report.legacy",
+            return_value=[{"Id": 132263, "Name": "Lauren"}],
+        ):
+            with self.assertRaises(Exception):
+                lookup_category_id("Laur")
 
 
 if __name__ == "__main__":
