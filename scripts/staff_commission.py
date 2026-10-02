@@ -17,10 +17,23 @@ ZERO = D("0")
 TWOP = D("0.01")
 
 PENALTY_RATE_PO = D("0.20")  # Option A: 20% of the PO when there is no sale
-MAX_JOB_PENALTY = D("250")  # Per-job commission minus cannot exceed this
+MAX_JOB_PENALTY = D("250")  # Per-job commission minus cannot exceed this (UK)
 
 MONTHLY_MIN_PROFIT = D("8000")
 MONTHLY_MIN_MARGIN = D("25")
+
+PENALTY_MODE_CATCHUP = "catchup"
+PENALTY_MODE_STEPPED = "stepped"
+
+# Lauren (South Africa): same sale bands and margin floors, lower earn rates.
+# Below-floor / PO-only uses a stepped order-size minus, not catch-up or 20% of PO.
+STEPPED_PENALTY_UNDER_500 = D("1.50")
+STEPPED_PENALTY_500_TO_1999 = D("5.00")
+STEPPED_PENALTY_2000_TO_4999 = D("10.00")
+STEPPED_PENALTY_5000_PLUS = D("25.00")
+STEPPED_BAND_500 = D("500")
+STEPPED_BAND_2000 = D("2000")
+STEPPED_BAND_5000 = D("5000")
 
 # Single source of truth for the job-level scheme.
 # A job matches the highest minRevenue that is <= its revenue.
@@ -76,6 +89,75 @@ def po_only_penalty(cost: D) -> D:
     """No invoice: 20% of the purchase-order value (option A), capped."""
     taxable_cost = cost if cost > 0 else ZERO
     return cap_penalty(money(-(taxable_cost * PENALTY_RATE_PO)))
+
+
+def stepped_order_penalty(order_size: D) -> D:
+    """Lauren below-floor / PO-only minus from order size. No £250 cap.
+
+    Sale is the order size when invoiced; PO amount is used when there is no sale.
+    """
+    size = order_size if order_size > 0 else ZERO
+    if size < STEPPED_BAND_500:
+        return money(-STEPPED_PENALTY_UNDER_500)
+    if size < STEPPED_BAND_2000:
+        return money(-STEPPED_PENALTY_500_TO_1999)
+    if size < STEPPED_BAND_5000:
+        return money(-STEPPED_PENALTY_2000_TO_4999)
+    return money(-STEPPED_PENALTY_5000_PLUS)
+
+
+@dataclass(frozen=True)
+class CommissionProfile:
+    """Staff-specific earn rates and penalty rule on the shared tier table."""
+
+    key: str
+    rate_map: dict[D, D] | None
+    penalty_mode: str
+    cap_rate: D
+
+
+UK_PROFILE = CommissionProfile(
+    key="uk",
+    rate_map=None,
+    penalty_mode=PENALTY_MODE_CATCHUP,
+    cap_rate=D("0.10"),
+)
+LAUREN_PROFILE = CommissionProfile(
+    key="lauren",
+    rate_map={
+        D("0"): ZERO,
+        D("0.05"): D("0.01"),
+        D("0.075"): D("0.02"),
+        D("0.10"): D("0.03"),
+    },
+    penalty_mode=PENALTY_MODE_STEPPED,
+    cap_rate=D("0.03"),
+)
+
+PROFILES: dict[str, CommissionProfile] = {
+    "uk": UK_PROFILE,
+    "default": UK_PROFILE,
+    "sharon": UK_PROFILE,
+    "ella": UK_PROFILE,
+    "lauren": LAUREN_PROFILE,
+}
+
+
+def resolve_profile(profile: str | CommissionProfile | None = None) -> CommissionProfile:
+    if profile is None:
+        return UK_PROFILE
+    if isinstance(profile, CommissionProfile):
+        return profile
+    key = str(profile).strip().lower()
+    if key not in PROFILES:
+        raise ValueError(f"Unknown commission profile {profile!r}")
+    return PROFILES[key]
+
+
+def apply_profile_rate(rate: D, profile: CommissionProfile) -> D:
+    if not profile.rate_map:
+        return rate
+    return profile.rate_map.get(rate, rate)
 
 
 def margin_catchup_penalty(sale: D, profit: D, floor_percent: D) -> D:
@@ -142,15 +224,21 @@ def calculate_job_commission(
     *,
     cost: Any = None,
     tiers: list[dict[str, Any]] | None = None,
+    profile: str | CommissionProfile | None = None,
 ) -> JobCommission:
     """Commission for one aggregated job.
 
-    Below the tier minimum margin, the minus is the profit shortfall to that
-    floor, capped at £250: 20% under £2,000, 12.5% from £2,000 up to £4,999.99,
-    10% from £5,000. No sale with a purchase order is 20% of the PO, also
-    capped. On jobs under £2,000, 20%–29.99% is £0. Positive commission is a
-    percentage of JOB PROFIT. Maximum rate is 10%.
+    UK default: below the tier minimum margin, the minus is the profit shortfall
+    to that floor, capped at £250: 20% under £2,000, 12.5% from £2,000 up to
+    £4,999.99, 10% from £5,000. No sale with a purchase order is 20% of the PO,
+    also capped. On jobs under £2,000, 20%–29.99% is £0. Positive commission is
+    a percentage of JOB PROFIT. Maximum rate is 10%.
+
+    Lauren profile: same sale bands and margin floors; earn rates 1% / 2% / 3%
+    (cap 3%). Below-floor or PO-only uses a stepped order-size minus
+    (−£1.50 / −£5 / −£10 / −£25). The UK £250 cap is unused.
     """
+    prof = resolve_profile(profile)
     sale = as_decimal(revenue)
     job_profit = as_decimal(profit)
     job_cost = as_decimal(cost) if cost is not None else (sale - job_profit)
@@ -162,10 +250,15 @@ def calculate_job_commission(
     no_sale = sale <= 0
     is_loss = job_profit < 0
     below_floor = margin is not None and margin < floor
+    stepped = prof.penalty_mode == PENALTY_MODE_STEPPED
     if no_sale and job_cost > 0:
-        deducted = po_only_penalty(job_cost)
+        deducted = stepped_order_penalty(job_cost) if stepped else po_only_penalty(job_cost)
     elif (not no_sale) and (is_loss or below_floor):
-        deducted = margin_catchup_penalty(sale, job_profit, floor)
+        deducted = (
+            stepped_order_penalty(sale)
+            if stepped
+            else margin_catchup_penalty(sale, job_profit, floor)
+        )
     else:
         deducted = None
     if deducted is not None:
@@ -196,7 +289,7 @@ def calculate_job_commission(
         raise ValueError(
             f"No commission band for margin {margin} in tier minRevenue={tier['minRevenue']}"
         )
-    rate = as_decimal(band["rate"])
+    rate = apply_profile_rate(as_decimal(band["rate"]), prof)
     return JobCommission(
         revenue=money(sale),
         profit=money(job_profit),
@@ -209,7 +302,12 @@ def calculate_job_commission(
     )
 
 
-def attach_job_commissions(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def attach_job_commissions(
+    rows: list[dict[str, Any]],
+    *,
+    profile: str | CommissionProfile | None = None,
+    tiers: list[dict[str, Any]] | None = None,
+) -> list[dict[str, Any]]:
     """Add commission + running totals to already-aggregated job rows.
 
     Does not change sale, cost, profit, or displayed margin.
@@ -219,7 +317,13 @@ def attach_job_commissions(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     running_commission = ZERO
     attached: list[dict[str, Any]] = []
     for row in rows:
-        result = calculate_job_commission(row["sale"], row["profit"], cost=row.get("cost"))
+        result = calculate_job_commission(
+            row["sale"],
+            row["profit"],
+            cost=row.get("cost"),
+            tiers=tiers,
+            profile=profile,
+        )
         running_profit += row["profit"]
         running_commission += result.commission
         attached.append(

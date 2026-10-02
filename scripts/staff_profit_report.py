@@ -48,9 +48,9 @@ ZERO = D("0")
 LONDON = ZoneInfo("Europe/London")
 
 STAFF = {
-    "sharon": {"name": "Sharon", "category_id": 132264},
-    "ella": {"name": "Ella", "category_id": 132225},
-    "lauren": {"name": "Lauren", "category_id": 132263},
+    "sharon": {"name": "Sharon", "category_id": 132264, "profile": "uk"},
+    "ella": {"name": "Ella", "category_id": 132225, "profile": "uk"},
+    "lauren": {"name": "Lauren", "category_id": 132263, "profile": "lauren"},
 }
 
 COMPLETED = {"completedOk", "completedWithIssues"}
@@ -58,7 +58,8 @@ ANOMALY_SALE = D("250")
 MIN_PO_AMOUNT = D("1")
 BEGINNING_OF_TIME = dt.date(2026, 5, 1)
 FROM_EMAIL = "ella@elvexpropertyservices.com"
-DEFAULT_MAIL_TO = "william@elvexpropertyservices.com"
+DEFAULT_MAIL_TO = "Ella@elvexpropertyservices.com"
+DEFAULT_MAIL_CC = "william@elvexpropertyservices.com"
 
 
 def is_missing_po_anomaly(sale: D, po_cost: D) -> bool:
@@ -357,16 +358,58 @@ def graph_token() -> str:
     return token
 
 
-def send_graph_mail(subject: str, html_body: str, to_email: str) -> None:
+def _as_address_list(value: str | list[str] | None) -> list[str]:
+    if not value:
+        return []
+    if isinstance(value, str):
+        return [part.strip() for part in value.split(",") if part.strip()]
+    return [str(part).strip() for part in value if str(part).strip()]
+
+
+def report_recipients(
+    to_arg: str | list[str] | None = None,
+    cc_arg: str | list[str] | None = None,
+) -> tuple[list[str], list[str]]:
+    """Always email Ella and CC William. Extra --to / --cc addresses are appended."""
+    to: list[str] = [DEFAULT_MAIL_TO]
+    cc: list[str] = [DEFAULT_MAIL_CC]
+    seen = {DEFAULT_MAIL_TO.lower(), DEFAULT_MAIL_CC.lower()}
+    for addr in _as_address_list(to_arg):
+        key = addr.lower()
+        if key not in seen:
+            to.append(addr)
+            seen.add(key)
+    for addr in _as_address_list(cc_arg):
+        key = addr.lower()
+        if key not in seen:
+            cc.append(addr)
+            seen.add(key)
+    return to, cc
+
+
+def send_graph_mail(
+    subject: str,
+    html_body: str,
+    to_email: str | list[str],
+    cc_email: str | list[str] | None = None,
+) -> None:
     token = graph_token()
-    payload = {
+    to_list = _as_address_list(to_email)
+    cc_list = _as_address_list(cc_email)
+    if not to_list:
+        raise ConfigError("sendMail requires at least one To address")
+    payload: dict[str, Any] = {
         "message": {
             "subject": subject,
             "body": {"contentType": "HTML", "content": html_body},
-            "toRecipients": [{"emailAddress": {"address": to_email}}],
+            "toRecipients": [{"emailAddress": {"address": addr}} for addr in to_list],
         },
         "saveToSentItems": True,
     }
+    if cc_list:
+        payload["message"]["ccRecipients"] = [
+            {"emailAddress": {"address": addr}} for addr in cc_list
+        ]
     raw = json.dumps(payload).encode()
     req = urllib.request.Request(
         f"https://graph.microsoft.com/v1.0/users/{urllib.parse.quote(FROM_EMAIL)}/sendMail",
@@ -864,24 +907,78 @@ def load_report_data(
     )
 
 
+def current_london_month() -> tuple[int, int]:
+    now = dt.datetime.now(LONDON)
+    return now.year, now.month
+
+
+def fetch_job_categories(token: str) -> list[dict[str, Any]]:
+    items: list[dict[str, Any]] = []
+    page = 1
+    while page <= 40:
+        body = rest_get(token, f"/v1/jobCategories?pageNumber={page}&pageSize=100")
+        chunk = body.get("items") or []
+        items.extend(chunk)
+        if len(chunk) < 100:
+            return items
+        page += 1
+    return items
+
+
+def lookup_category_id(name: str, token: str | None = None) -> int:
+    """Resolve a staff job category from BigChange. Do not guess an id."""
+    access = token or rest_token()
+    needle = name.strip().lower()
+    matches: list[tuple[int, str]] = []
+    for item in fetch_job_categories(access):
+        label = str(item.get("name") or item.get("description") or "").strip()
+        raw_id = item.get("id")
+        if raw_id in (None, "") or not label:
+            continue
+        if label.lower() == needle:
+            matches.append((int(raw_id), label))
+    if len(matches) == 1:
+        return matches[0][0]
+    if len(matches) > 1:
+        raise ConfigError(
+            f"Ambiguous BigChange job category for {name!r}: "
+            + ", ".join(f"{label} ({cid})" for cid, label in matches)
+        )
+    raise ConfigError(f"No BigChange job category named {name!r}")
+
+
+def resolve_staff(name: str) -> dict[str, Any]:
+    key = name.strip().lower()
+    if key in STAFF:
+        return STAFF[key]
+    category_id = lookup_category_id(name)
+    return {
+        "name": name.strip(),
+        "category_id": category_id,
+        "profile": "uk",
+    }
+
+
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    year, month = current_london_month()
     parser = argparse.ArgumentParser(description="Staff commission report")
-    parser.add_argument("--staff", choices=sorted(STAFF), default="sharon")
-    parser.add_argument("--year", type=int, default=2026)
-    parser.add_argument("--month", type=int, default=8)
+    parser.add_argument("--staff", default="sharon")
+    parser.add_argument("--year", type=int, default=year)
+    parser.add_argument("--month", type=int, default=month)
     parser.add_argument("--send", action="store_true", help="Email the report")
     parser.add_argument("--to", default=os.environ.get("STAFF_PROFIT_MAIL_TO", DEFAULT_MAIL_TO))
+    parser.add_argument("--cc", default=os.environ.get("STAFF_PROFIT_MAIL_CC", DEFAULT_MAIL_CC))
     parser.add_argument("--out", default="")
     return parser.parse_args(argv)
 
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
-    staff = STAFF[args.staff]
+    staff = resolve_staff(args.staff)
     month_start, month_end = month_bounds(args.year, args.month)
     month_label = month_start.strftime("%B %Y")
     main_rows, anomaly_rows = load_report_data(staff["category_id"], month_start, month_end)
-    job_rows = attach_job_commissions(main_rows)
+    job_rows = attach_job_commissions(main_rows, profile=staff.get("profile"))
     html_body = build_html(
         staff_name=staff["name"],
         month_label=month_label,
@@ -915,11 +1012,13 @@ def main(argv: list[str] | None = None) -> int:
     print("wrote", out_path)
     if args.send:
         subject = f"{staff['name']} — {month_label} — commission report"
+        to_list, cc_list = report_recipients(args.to, args.cc)
+        print("mail_to", to_list, "mail_cc", cc_list)
         try:
-            send_graph_mail(subject, html_body, args.to)
+            send_graph_mail(subject, html_body, to_list, cc_list)
         except Exception:
             time.sleep(2)
-            send_graph_mail(subject, html_body, args.to)
+            send_graph_mail(subject, html_body, to_list, cc_list)
     return 0
 
 

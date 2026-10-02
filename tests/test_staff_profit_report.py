@@ -8,13 +8,20 @@ from scripts.staff_commission import (
     sum_job_commissions,
 )
 from scripts.staff_profit_report import (
+    DEFAULT_MAIL_CC,
+    DEFAULT_MAIL_TO,
     RUN_EDGE,
+    STAFF,
     build_html,
     build_staff_rows,
     commission_style,
+    current_london_month,
     daily_totals,
     is_missing_po_anomaly,
     iter_display_rows,
+    parse_args,
+    report_recipients,
+    resolve_staff,
 )
 
 
@@ -497,6 +504,55 @@ class CompleteGroupReportingTest(unittest.TestCase):
         self.assertEqual(anomaly_rows, [])
         self.assertEqual(main_rows[0]["sale"], D("120.00"))
         self.assertEqual(main_rows[0]["cost"], D("0.00"))
+
+
+class LaurenReportWiringTest(unittest.TestCase):
+    def test_lauren_html_uses_1_2_3_rates_and_stepped_minus(self) -> None:
+        jobs = attach_job_commissions(
+            [
+                _job(dt.date(2026, 10, 3), "GR/1", "1500", "525"),
+                _job(dt.date(2026, 10, 4), "GR/2", "3000", "300"),
+            ],
+            profile="lauren",
+        )
+        body = build_html(
+            staff_name="Lauren",
+            month_label="October 2026",
+            job_rows=jobs,
+            anomaly_rows=[],
+        )
+        self.assertIn("Lauren — October 2026 commission report", body)
+        self.assertIn("£5.25", body)
+        self.assertIn("-£10.00", body)
+        self.assertNotIn("£26.25", body)
+        self.assertNotIn("-£75.00", body)
+        self.assertNotIn("Day by day", body)
+        self.assertNotIn("Your current commission is", body)
+
+    def test_known_staff_profiles_and_category_ids(self) -> None:
+        self.assertEqual(STAFF["lauren"]["category_id"], 132263)
+        self.assertEqual(STAFF["lauren"]["profile"], "lauren")
+        self.assertEqual(STAFF["sharon"]["profile"], "uk")
+        self.assertEqual(STAFF["ella"]["profile"], "uk")
+        self.assertEqual(resolve_staff("Lauren")["category_id"], 132263)
+        self.assertEqual(resolve_staff("Sharon")["profile"], "uk")
+
+    def test_always_emails_ella_and_ccs_william(self) -> None:
+        to_list, cc_list = report_recipients()
+        self.assertEqual(to_list, [DEFAULT_MAIL_TO])
+        self.assertEqual(cc_list, [DEFAULT_MAIL_CC])
+        self.assertEqual(DEFAULT_MAIL_TO.lower(), "ella@elvexpropertyservices.com")
+        self.assertEqual(DEFAULT_MAIL_CC.lower(), "william@elvexpropertyservices.com")
+        to_list, cc_list = report_recipients("william@elvexpropertyservices.com", "")
+        self.assertEqual([addr.lower() for addr in to_list], ["ella@elvexpropertyservices.com"])
+        self.assertEqual([addr.lower() for addr in cc_list], ["william@elvexpropertyservices.com"])
+
+    def test_cli_defaults_to_the_current_london_month(self) -> None:
+        year, month = current_london_month()
+        args = parse_args(["--staff", "lauren"])
+        self.assertEqual(args.year, year)
+        self.assertEqual(args.month, month)
+        self.assertEqual(args.staff, "lauren")
 
 
 if __name__ == "__main__":
