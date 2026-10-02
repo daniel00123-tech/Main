@@ -4,10 +4,15 @@ import unittest
 
 from scripts.staff_commission import (
     COMMISSION_TIERS,
+    LAUREN_PROFILE,
     MAX_JOB_PENALTY,
     MONTHLY_MIN_MARGIN,
     MONTHLY_MIN_PROFIT,
     PENALTY_RATE_PO,
+    STEPPED_PENALTY_2000_TO_4999,
+    STEPPED_PENALTY_5000_PLUS,
+    STEPPED_PENALTY_500_TO_1999,
+    STEPPED_PENALTY_UNDER_500,
     attach_job_commissions,
     calculate_job_commission,
     exact_margin_percent,
@@ -15,6 +20,7 @@ from scripts.staff_commission import (
     money,
     po_only_penalty,
     qualify_month,
+    stepped_order_penalty,
     sum_job_commissions,
 )
 
@@ -372,6 +378,162 @@ class CentralConfigShapeTest(unittest.TestCase):
             self.assertEqual(bands[0]["minMargin"], tier["penaltyBelowMargin"])
             self.assertIsNone(bands[-1]["maxMargin"])
             self.assertEqual(bands[-1]["rate"], D("0.10"))
+
+
+def lauren(revenue, profit=None, *, margin=None, cost=None) -> D:
+    sale = D(str(revenue))
+    if profit is None:
+        if margin is None:
+            raise ValueError("profit or margin required")
+        job_profit = sale * D(str(margin)) / D("100")
+    else:
+        job_profit = D(str(profit))
+    job_cost = D(str(cost)) if cost is not None else (sale - job_profit)
+    return calculate_job_commission(
+        sale, job_profit, cost=job_cost, profile="lauren"
+    ).commission
+
+
+class LaurenEarnRatesTest(unittest.TestCase):
+    def test_tier1_35_percent_is_1_percent_of_profit(self) -> None:
+        result = calculate_job_commission("1500", "525", profile="lauren")
+        self.assertEqual(result.commission, D("5.25"))
+        self.assertEqual(result.rate, D("0.01"))
+        self.assertFalse(result.is_penalty)
+        self.assertEqual(commission("1500", "525"), D("26.25"))
+
+    def test_tier1_42_percent_is_2_percent_of_profit(self) -> None:
+        result = calculate_job_commission("1500", D("1500") * D("0.42"), profile="lauren")
+        self.assertEqual(result.rate, D("0.02"))
+        self.assertEqual(result.commission, money(D("1500") * D("0.42") * D("0.02")))
+
+    def test_tier1_50_percent_is_3_percent_of_profit(self) -> None:
+        result = calculate_job_commission("1500", D("1500") * D("0.50"), profile="lauren")
+        self.assertEqual(result.rate, D("0.03"))
+        self.assertEqual(result.commission, money(D("1500") * D("0.50") * D("0.03")))
+        self.assertEqual(LAUREN_PROFILE.cap_rate, D("0.03"))
+
+    def test_tier1_dead_band_is_still_zero(self) -> None:
+        result = calculate_job_commission("1500", D("1500") * D("0.25"), profile="lauren")
+        self.assertEqual(result.commission, D("0.00"))
+        self.assertFalse(result.is_penalty)
+        self.assertEqual(result.rate, D("0"))
+
+    def test_tier2_12_5_percent_is_1_percent(self) -> None:
+        result = calculate_job_commission("3000", D("3000") * D("0.125"), profile="lauren")
+        self.assertEqual(result.rate, D("0.01"))
+        self.assertEqual(result.commission, money(D("3000") * D("0.125") * D("0.01")))
+
+    def test_tier2_35_percent_is_2_percent(self) -> None:
+        result = calculate_job_commission("3000", "1050", profile="lauren")
+        self.assertEqual(result.rate, D("0.02"))
+        self.assertEqual(result.commission, D("21.00"))
+        self.assertEqual(commission("3000", "1050"), D("78.75"))
+
+    def test_tier2_42_5_percent_is_3_percent(self) -> None:
+        result = calculate_job_commission("3000", D("3000") * D("0.425"), profile="lauren")
+        self.assertEqual(result.rate, D("0.03"))
+        self.assertEqual(result.commission, money(D("3000") * D("0.425") * D("0.03")))
+
+    def test_tier3_10_percent_is_1_percent(self) -> None:
+        result = calculate_job_commission("5000", D("5000") * D("0.10"), profile="lauren")
+        self.assertEqual(result.rate, D("0.01"))
+        self.assertEqual(result.commission, money(D("5000") * D("0.10") * D("0.01")))
+
+    def test_tier3_20_percent_is_2_percent(self) -> None:
+        result = calculate_job_commission("5000", D("5000") * D("0.20"), profile="lauren")
+        self.assertEqual(result.rate, D("0.02"))
+        self.assertEqual(result.commission, money(D("5000") * D("0.20") * D("0.02")))
+
+    def test_tier3_32_percent_is_3_percent_cap(self) -> None:
+        result = calculate_job_commission("5000", D("5000") * D("0.32"), profile="lauren")
+        self.assertEqual(result.rate, D("0.03"))
+        self.assertEqual(result.commission, money(D("5000") * D("0.32") * D("0.03")))
+        uk = calculate_job_commission("5000", D("5000") * D("0.32"))
+        self.assertEqual(uk.rate, D("0.10"))
+
+
+class LaurenSteppedPenaltyTest(unittest.TestCase):
+    def test_below_floor_under_500_is_1_50(self) -> None:
+        result = calculate_job_commission("400", "40", cost="360", profile="lauren")
+        self.assertTrue(result.is_penalty)
+        self.assertEqual(result.commission, D("-1.50"))
+        self.assertEqual(result.commission, -STEPPED_PENALTY_UNDER_500)
+        self.assertEqual(stepped_order_penalty(D("400")), D("-1.50"))
+        self.assertNotEqual(result.commission, margin_catchup_penalty(D("400"), D("40"), D("20")))
+
+    def test_below_floor_500_to_1999_is_5(self) -> None:
+        result = calculate_job_commission("1500", "150", cost="1350", profile="lauren")
+        self.assertTrue(result.is_penalty)
+        self.assertEqual(result.commission, D("-5.00"))
+        self.assertEqual(result.commission, -STEPPED_PENALTY_500_TO_1999)
+        self.assertEqual(commission("1500", "150"), margin_catchup_penalty(D("1500"), D("150"), D("20")))
+
+    def test_below_floor_exactly_1999_99_is_5(self) -> None:
+        self.assertEqual(lauren("1999.99", margin="10"), D("-5.00"))
+
+    def test_below_floor_2000_to_4999_is_10(self) -> None:
+        result = calculate_job_commission("3000", "300", cost="2700", profile="lauren")
+        self.assertTrue(result.is_penalty)
+        self.assertEqual(result.commission, D("-10.00"))
+        self.assertEqual(result.commission, -STEPPED_PENALTY_2000_TO_4999)
+        self.assertEqual(commission("3000", "300"), D("-75.00"))
+
+    def test_below_floor_exactly_4999_99_is_10(self) -> None:
+        self.assertEqual(lauren("4999.99", margin="5"), D("-10.00"))
+
+    def test_below_floor_5000_plus_is_25(self) -> None:
+        result = calculate_job_commission("8000", "0", cost="8000", profile="lauren")
+        self.assertTrue(result.is_penalty)
+        self.assertEqual(result.commission, D("-25.00"))
+        self.assertEqual(result.commission, -STEPPED_PENALTY_5000_PLUS)
+        self.assertEqual(commission("8000", "0"), D("-250.00"))
+
+    def test_gr573_style_loss_uses_step_not_catchup(self) -> None:
+        result = calculate_job_commission("705", "106", cost="599", profile="lauren")
+        self.assertEqual(result.commission, D("-5.00"))
+        self.assertEqual(commission("705", "106"), D("-35.00"))
+
+    def test_po_only_under_500_is_1_50(self) -> None:
+        result = calculate_job_commission("0", "-400", cost="400", profile="lauren")
+        self.assertTrue(result.is_penalty)
+        self.assertEqual(result.commission, D("-1.50"))
+        self.assertEqual(po_only_penalty(D("400")), D("-80.00"))
+
+    def test_po_only_500_to_1999_is_5(self) -> None:
+        result = calculate_job_commission("0", "-664", cost="664", profile="lauren")
+        self.assertEqual(result.commission, D("-5.00"))
+        self.assertEqual(po_only_penalty(D("664")), D("-132.80"))
+
+    def test_po_only_2000_to_4999_is_10(self) -> None:
+        result = calculate_job_commission("0", "-3000", cost="3000", profile="lauren")
+        self.assertEqual(result.commission, D("-10.00"))
+        self.assertEqual(po_only_penalty(D("3000")), D("-250.00"))
+
+    def test_po_only_5000_plus_is_25(self) -> None:
+        result = calculate_job_commission("0", "-5000", cost="5000", profile="lauren")
+        self.assertEqual(result.commission, D("-25.00"))
+        self.assertEqual(commission("0", "-5000", cost="5000"), D("-250.00"))
+
+    def test_stepped_boundaries(self) -> None:
+        self.assertEqual(stepped_order_penalty(D("499.99")), D("-1.50"))
+        self.assertEqual(stepped_order_penalty(D("500")), D("-5.00"))
+        self.assertEqual(stepped_order_penalty(D("1999.99")), D("-5.00"))
+        self.assertEqual(stepped_order_penalty(D("2000")), D("-10.00"))
+        self.assertEqual(stepped_order_penalty(D("4999.99")), D("-10.00"))
+        self.assertEqual(stepped_order_penalty(D("5000")), D("-25.00"))
+
+    def test_attach_uses_lauren_profile(self) -> None:
+        rows = attach_job_commissions(
+            [
+                {"sale": D("1500"), "cost": D("975"), "profit": D("525")},
+                {"sale": D("3000"), "cost": D("2700"), "profit": D("300")},
+                {"sale": D("0"), "cost": D("400"), "profit": D("-400")},
+            ],
+            profile="lauren",
+        )
+        self.assertEqual([row["commission"] for row in rows], [D("5.25"), D("-10.00"), D("-1.50")])
+        self.assertEqual(rows[-1]["running_commission"], D("-6.25"))
 
 
 if __name__ == "__main__":
