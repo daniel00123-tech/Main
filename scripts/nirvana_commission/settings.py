@@ -188,7 +188,7 @@ def load_settings(env: Mapping[str, str] | None = None) -> NirvanaSettings:
         smtp_password=required(raw, "NIRVANA_SMTP_PASSWORD"),
         from_email=required(raw, "NIRVANA_SMTP_FROM_EMAIL"),
         from_name=env_get(raw, "NIRVANA_SMTP_FROM_NAME", default="Daniel Dwyer"),
-        cc_email=required(raw, "NIRVANA_SMTP_CC_EMAIL"),
+        cc_email=env_get(raw, "NIRVANA_SMTP_CC_EMAIL", default=""),
         cache_dir=cache_dir,
         test_override=test_override,
     )

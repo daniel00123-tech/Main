@@ -226,8 +226,8 @@ def assert_ready_to_send(settings: NirvanaSettings, staff_keys: list[str], packs
         else:
             if to_email.lower() != pack["staff"]["email"].lower():
                 raise ConfigError(f"Permanent recipient mismatch for {pack['staff']['name']}")
-            if TEST_OVERRIDE_TO not in cc_email.lower():
-                raise ConfigError("Permanent CC must include daniel.dwyer@nirvana-group.co.uk")
+            if cc_email.strip() != settings.cc_email.strip():
+                raise ConfigError("Permanent CC does not match NIRVANA_SMTP_CC_EMAIL")
             if prefix:
                 raise ConfigError("Permanent routing must not use the test subject prefix")
             if to_email.lower() not in staff_emails:

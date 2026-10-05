@@ -310,7 +310,7 @@ def build_staff_report(
             anomaly_rows.append(
                 {
                     **row,
-                    "reason": "Sale over £250 with no purchase order and no labour",
+                    "reason": "Sale over £250 with no purchase order or labour",
                 }
             )
             continue

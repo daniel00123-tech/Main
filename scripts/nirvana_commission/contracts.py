@@ -182,9 +182,10 @@ def _recurring_reason(count: int, net: D, months: int) -> str:
 
 
 def recurring_invoice_reason(docs: list[dict[str, Any]]) -> str:
-    """Five or more same-net invoices across a long, multi-month span.
+    """Five or more same-net invoices across two or more calendar months.
 
-    Same-month or short bursts are not recurring contracts. Credits are ignored.
+    Same-value invoices inside one month are a short billing event, not a
+    contract. Credits are ignored. Invoice nets are compared at document level.
     """
     grouped: dict[D, list[dict[str, Any]]] = {}
     seen: set[str] = set()
@@ -217,10 +218,6 @@ def recurring_invoice_reason(docs: list[dict[str, Any]]) -> str:
             continue
         months = {(item["document_date"].year, item["document_date"].month) for item in invoices}
         if len(months) < 2:
-            continue
-        earliest = min(item["document_date"] for item in invoices)
-        latest = max(item["document_date"] for item in invoices)
-        if not spans_more_than_months(earliest, latest, 3):
             continue
         return _recurring_reason(len(invoices), net, len(months))
     return ""
