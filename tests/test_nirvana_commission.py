@@ -632,6 +632,31 @@ class ContractExclusionTest(unittest.TestCase):
         self.assertTrue(decision.excluded)
         self.assertIn("6 recurring invoices of £750.00 across 6 months", decision.reason)
 
+    def test_five_same_value_invoices_across_two_months_are_excluded(self) -> None:
+        jobs = [completed_job(1, 73, "2026-01-10", Resource="")]
+        docs = []
+        for index, when in enumerate(
+            (
+                dt.date(2026, 1, 8),
+                dt.date(2026, 1, 22),
+                dt.date(2026, 2, 5),
+                dt.date(2026, 2, 12),
+                dt.date(2026, 2, 26),
+            )
+        ):
+            docs.append(
+                {
+                    "kind": "invoice",
+                    "document_id": f"two-{index}",
+                    "document_date": when,
+                    "net_ex_vat": D("400.00"),
+                    "raw": {},
+                }
+            )
+        decision = classify_contract_group(jobs, docs)
+        self.assertTrue(decision.excluded)
+        self.assertIn("5 recurring invoices of £400.00 across 2 months", decision.reason)
+
     def test_six_different_invoice_values_are_not_a_recurring_contract(self) -> None:
         jobs = [completed_job(1, 71, "2026-01-10", Resource="")]
         docs = [
@@ -794,6 +819,25 @@ class HtmlAndRoutingTest(unittest.TestCase):
         self.assertEqual(loaded.api_key, "nirvana-key")
         self.assertTrue(loaded.test_override)
         self.assertNotEqual(loaded.api_key, "do-not-use")
+        no_cc = load_settings(
+            {
+                "NIRVANA_BIGCHANGE_AUTH_MODE": "api_key",
+                "NIRVANA_BIGCHANGE_API_KEY": "nirvana-key",
+                "NIRVANA_BIGCHANGE_USERNAME": "nirvana-user",
+                "NIRVANA_BIGCHANGE_PASSWORD": "nirvana-pass",
+                "NIRVANA_SMTP_HOST": "smtp.gmail.com",
+                "NIRVANA_SMTP_PORT": "587",
+                "NIRVANA_SMTP_USERNAME": "mailer",
+                "NIRVANA_SMTP_PASSWORD": "mail-pass",
+                "NIRVANA_SMTP_FROM_EMAIL": "daniel.dwyer123@gmail.com",
+                "NIRVANA_SMTP_FROM_NAME": "Daniel Dwyer",
+            }
+        )
+        self.assertEqual(no_cc.cc_email, "")
+        to_email, cc_email, prefix = delivery_for(no_cc, STAFF["hazel"])
+        self.assertEqual(to_email, STAFF["hazel"]["email"])
+        self.assertEqual(cc_email, "")
+        self.assertEqual(prefix, "")
 
     def test_email_has_full_report_and_no_attachment(self) -> None:
         rows = attach_job_commissions(
