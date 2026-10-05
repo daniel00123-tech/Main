@@ -8,13 +8,22 @@ from scripts.staff_commission import (
     sum_job_commissions,
 )
 from scripts.staff_profit_report import (
+    MAIL_CC,
     RUN_EDGE,
+    ConfigError,
     build_html,
     build_staff_rows,
     commission_style,
     daily_totals,
+    is_current_london_month,
     is_missing_po_anomaly,
     iter_display_rows,
+    london_today,
+    match_job_category_id,
+    parse_args,
+    refuse_past_month_send,
+    resolve_staff,
+    staff_mailbox,
 )
 
 
@@ -497,6 +506,51 @@ class CompleteGroupReportingTest(unittest.TestCase):
         self.assertEqual(anomaly_rows, [])
         self.assertEqual(main_rows[0]["sale"], D("120.00"))
         self.assertEqual(main_rows[0]["cost"], D("0.00"))
+
+
+class AutomationDefaultsTest(unittest.TestCase):
+    def test_cli_defaults_to_current_london_month_and_sharon(self) -> None:
+        today = london_today()
+        args = parse_args([])
+        self.assertEqual(args.staff, "sharon")
+        self.assertEqual(args.year, today.year)
+        self.assertEqual(args.month, today.month)
+        self.assertEqual(args.cc, MAIL_CC)
+        self.assertFalse(args.send)
+
+    def test_staff_mailbox_uses_first_name(self) -> None:
+        self.assertEqual(staff_mailbox("Sharon"), "sharon@elvexpropertyservices.com")
+        self.assertEqual(staff_mailbox("Ella"), "ella@elvexpropertyservices.com")
+
+    def test_known_staff_use_hard_coded_category_ids(self) -> None:
+        sharon = resolve_staff("Sharon")
+        self.assertEqual(sharon["category_id"], 132264)
+        self.assertEqual(sharon["email"], "sharon@elvexpropertyservices.com")
+        self.assertEqual(resolve_staff("Ella")["category_id"], 132225)
+        self.assertEqual(resolve_staff("Lauren")["category_id"], 132263)
+
+    def test_unknown_staff_uses_exact_category_lookup_only(self) -> None:
+        categories = [
+            {"Name": "Alexander", "Id": 111},
+            {"JobCategoryName": "Alex", "JobCategoryId": 999001},
+        ]
+        staff = resolve_staff("Alex", categories=categories)
+        self.assertEqual(staff["category_id"], 999001)
+        self.assertEqual(staff["email"], "alex@elvexpropertyservices.com")
+        with self.assertRaises(ConfigError):
+            resolve_staff("Alex", categories=[{"Name": "Alexander", "Id": 111}])
+        with self.assertRaises(ConfigError):
+            match_job_category_id("Alex", [{"Name": "Alexandra", "Id": 2}])
+
+    def test_sending_a_past_month_is_refused(self) -> None:
+        today = dt.date(2026, 10, 5)
+        self.assertTrue(is_current_london_month(2026, 10, today))
+        self.assertFalse(is_current_london_month(2026, 8, today))
+        refuse_past_month_send(2026, 10, today)
+        with self.assertRaises(ConfigError):
+            refuse_past_month_send(2026, 8, today)
+        with self.assertRaises(ConfigError):
+            refuse_past_month_send(2026, 9, today)
 
 
 if __name__ == "__main__":
