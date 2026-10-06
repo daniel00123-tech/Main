@@ -1,6 +1,7 @@
 import datetime as dt
 import decimal
 import unittest
+from zoneinfo import ZoneInfo
 
 from scripts.staff_commission import (
     attach_job_commissions,
@@ -8,13 +9,18 @@ from scripts.staff_commission import (
     sum_job_commissions,
 )
 from scripts.staff_profit_report import (
+    DEFAULT_MAIL_CC,
+    DEFAULT_MAIL_TO,
     RUN_EDGE,
+    STAFF,
     build_html,
     build_staff_rows,
     commission_style,
     daily_totals,
     is_missing_po_anomaly,
     iter_display_rows,
+    parse_args,
+    resolve_staff,
 )
 
 
@@ -36,6 +42,26 @@ def _job(date, reference, sale, profit, cost=None, key=None):
         "profit": profit,
         "margin": (profit / sale * D("100")).quantize(D("0.1")) if sale else None,
     }
+
+
+class StaffProfileAndMailDefaultsTest(unittest.TestCase):
+    def test_lauren_uses_lauren_profile_sharon_and_ella_stay_uk(self) -> None:
+        self.assertEqual(STAFF["lauren"]["profile"], "lauren")
+        self.assertEqual(STAFF["lauren"]["category_id"], 132263)
+        self.assertEqual(STAFF["sharon"]["profile"], "uk")
+        self.assertEqual(STAFF["ella"]["profile"], "uk")
+        self.assertEqual(resolve_staff("Lauren")["profile"], "lauren")
+        self.assertEqual(resolve_staff("sharon")["profile"], "uk")
+
+    def test_email_defaults_are_ella_to_and_william_cc(self) -> None:
+        self.assertEqual(DEFAULT_MAIL_TO, "ella@elvexpropertyservices.com")
+        self.assertEqual(DEFAULT_MAIL_CC, "william@elvexpropertyservices.com")
+        args = parse_args([])
+        self.assertEqual(args.to, DEFAULT_MAIL_TO)
+        self.assertEqual(args.cc, DEFAULT_MAIL_CC)
+        now = dt.datetime.now(ZoneInfo("Europe/London"))
+        self.assertEqual(args.year, now.year)
+        self.assertEqual(args.month, now.month)
 
 
 class DisplayRowTest(unittest.TestCase):
