@@ -48,9 +48,9 @@ ZERO = D("0")
 LONDON = ZoneInfo("Europe/London")
 
 STAFF = {
-    "sharon": {"name": "Sharon", "category_id": 132264},
-    "ella": {"name": "Ella", "category_id": 132225},
-    "lauren": {"name": "Lauren", "category_id": 132263},
+    "sharon": {"name": "Sharon", "category_id": 132264, "profile": "uk"},
+    "ella": {"name": "Ella", "category_id": 132225, "profile": "uk"},
+    "lauren": {"name": "Lauren", "category_id": 132263, "profile": "lauren"},
 }
 
 COMPLETED = {"completedOk", "completedWithIssues"}
@@ -58,7 +58,8 @@ ANOMALY_SALE = D("250")
 MIN_PO_AMOUNT = D("1")
 BEGINNING_OF_TIME = dt.date(2026, 5, 1)
 FROM_EMAIL = "ella@elvexpropertyservices.com"
-DEFAULT_MAIL_TO = "william@elvexpropertyservices.com"
+DEFAULT_MAIL_TO = "ella@elvexpropertyservices.com"
+DEFAULT_MAIL_CC = "william@elvexpropertyservices.com"
 
 
 def is_missing_po_anomaly(sale: D, po_cost: D) -> bool:
@@ -357,9 +358,14 @@ def graph_token() -> str:
     return token
 
 
-def send_graph_mail(subject: str, html_body: str, to_email: str) -> None:
+def send_graph_mail(
+    subject: str,
+    html_body: str,
+    to_email: str,
+    cc_email: str | None = None,
+) -> None:
     token = graph_token()
-    payload = {
+    payload: dict[str, Any] = {
         "message": {
             "subject": subject,
             "body": {"contentType": "HTML", "content": html_body},
@@ -367,6 +373,8 @@ def send_graph_mail(subject: str, html_body: str, to_email: str) -> None:
         },
         "saveToSentItems": True,
     }
+    if cc_email:
+        payload["message"]["ccRecipients"] = [{"emailAddress": {"address": cc_email}}]
     raw = json.dumps(payload).encode()
     req = urllib.request.Request(
         f"https://graph.microsoft.com/v1.0/users/{urllib.parse.quote(FROM_EMAIL)}/sendMail",
@@ -864,24 +872,79 @@ def load_report_data(
     )
 
 
+def _category_rows(result: Any) -> list[dict[str, Any]]:
+    if result is None:
+        return []
+    if isinstance(result, list):
+        return [row for row in result if isinstance(row, dict)]
+    if isinstance(result, dict):
+        for key in ("JobCategories", "TypeList", "Categories", "Items", "items"):
+            value = result.get(key)
+            if isinstance(value, list):
+                return [row for row in value if isinstance(row, dict)]
+        if any(key in result for key in ("Id", "id", "Name", "name", "JobCategoryName")):
+            return [result]
+    return []
+
+
+def lookup_category_id(staff_name: str) -> int:
+    """Resolve a BigChange job category id. Do not guess when the name is unknown."""
+    rows = _category_rows(legacy("JobCategories"))
+    target = staff_name.strip().lower()
+    matches: list[int] = []
+    for row in rows:
+        name = str(
+            row.get("label")
+            or row.get("JobCategoryName")
+            or row.get("CategoryName")
+            or row.get("Name")
+            or row.get("name")
+            or ""
+        ).strip()
+        if name.lower() != target:
+            continue
+        raw = row.get("Id") or row.get("id") or row.get("JobCategoryId") or row.get("TypeId")
+        if raw not in (None, ""):
+            matches.append(int(raw))
+    unique = sorted(set(matches))
+    if len(unique) == 1:
+        return unique[0]
+    if not unique:
+        raise ConfigError(f"No BigChange job category named {staff_name!r}")
+    raise ConfigError(f"Multiple BigChange job categories named {staff_name!r}: {unique}")
+
+
+def resolve_staff(name: str) -> dict[str, Any]:
+    key = name.strip().lower()
+    if key in STAFF:
+        return STAFF[key]
+    return {
+        "name": name.strip().title(),
+        "category_id": lookup_category_id(name),
+        "profile": "uk",
+    }
+
+
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    now = dt.datetime.now(LONDON)
     parser = argparse.ArgumentParser(description="Staff commission report")
-    parser.add_argument("--staff", choices=sorted(STAFF), default="sharon")
-    parser.add_argument("--year", type=int, default=2026)
-    parser.add_argument("--month", type=int, default=8)
+    parser.add_argument("--staff", default="sharon", help="Staff first name (known: sharon, ella, lauren)")
+    parser.add_argument("--year", type=int, default=now.year)
+    parser.add_argument("--month", type=int, default=now.month)
     parser.add_argument("--send", action="store_true", help="Email the report")
     parser.add_argument("--to", default=os.environ.get("STAFF_PROFIT_MAIL_TO", DEFAULT_MAIL_TO))
+    parser.add_argument("--cc", default=os.environ.get("STAFF_PROFIT_MAIL_CC", DEFAULT_MAIL_CC))
     parser.add_argument("--out", default="")
     return parser.parse_args(argv)
 
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
-    staff = STAFF[args.staff]
+    staff = resolve_staff(args.staff)
     month_start, month_end = month_bounds(args.year, args.month)
     month_label = month_start.strftime("%B %Y")
     main_rows, anomaly_rows = load_report_data(staff["category_id"], month_start, month_end)
-    job_rows = attach_job_commissions(main_rows)
+    job_rows = attach_job_commissions(main_rows, profile=staff.get("profile") or "uk")
     html_body = build_html(
         staff_name=staff["name"],
         month_label=month_label,
@@ -916,10 +979,10 @@ def main(argv: list[str] | None = None) -> int:
     if args.send:
         subject = f"{staff['name']} — {month_label} — commission report"
         try:
-            send_graph_mail(subject, html_body, args.to)
+            send_graph_mail(subject, html_body, args.to, args.cc)
         except Exception:
             time.sleep(2)
-            send_graph_mail(subject, html_body, args.to)
+            send_graph_mail(subject, html_body, args.to, args.cc)
     return 0
 
 
