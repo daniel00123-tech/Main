@@ -1,0 +1,5 @@
+issue_id,action,start_status,end_status,error
+IS21846996,close,Reported,Reported,could not find job for issue IS21846996
+IS21991574,close,Reported,Reported,could not find job for issue IS21991574
+IS22117597,close,Reported,Reported,could not find job for issue IS22117597
+IS22676619,close,AwaitingJobCompletion,JobCompleted,Issue is not in the correct state to be completed
