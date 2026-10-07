@@ -10,9 +10,13 @@ from .commission import (
     MONTHLY_MIN_PROFIT,
     SMALL_JOB_MAX_PENALTY,
     SMALL_JOB_SALE,
+    SOUTH_AFRICA_MONTHLY_MIN_PROFIT,
+    SOUTH_AFRICA_TIERS,
     attach_job_commissions,
     calculate_job_commission,
+    monthly_min_profit_for,
     qualify_month,
+    south_africa_order_penalty,
     sum_job_commissions,
 )
 
@@ -22,8 +26,12 @@ __all__ = [
     "MONTHLY_MIN_PROFIT",
     "SMALL_JOB_MAX_PENALTY",
     "SMALL_JOB_SALE",
+    "SOUTH_AFRICA_MONTHLY_MIN_PROFIT",
+    "SOUTH_AFRICA_TIERS",
     "attach_job_commissions",
     "calculate_job_commission",
+    "monthly_min_profit_for",
     "qualify_month",
+    "south_africa_order_penalty",
     "sum_job_commissions",
 ]

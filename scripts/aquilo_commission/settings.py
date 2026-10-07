@@ -77,9 +77,49 @@ STAFF = {
         "key": "amy",
         "email": "amy.bradley@aquilofacilities.co.uk",
     },
+    "kayla": {
+        "name": "Kayla Du Randt",
+        "category_id": 142893,
+        "key": "kayla",
+        "email": "kayladurandt@aquilofacilities.co.uk",
+    },
 }
 STAFF_BY_CATEGORY = {meta["category_id"]: meta for meta in STAFF.values()}
 GO_LIVE_TO_ALLOWLIST = frozenset(meta["email"] for meta in STAFF.values())
+
+# Name, email, or staff key. Anyone listed here uses the South Africa
+# commission profile. Add future SA staff here — do not copy the engine.
+SOUTH_AFRICA_PROFILE_STAFF = frozenset(
+    {
+        "kayla",
+        "kayla du randt",
+        "kayladurandt@aquilofacilities.co.uk",
+    }
+)
+PROFILE_DEFAULT = "default"
+PROFILE_SOUTH_AFRICA = "south_africa"
+
+
+def commission_profile_for(
+    staff: Mapping[str, object],
+    *,
+    sa_staff: frozenset[str] | None = None,
+) -> str:
+    """Return the reusable profile for a staff record.
+
+    Matching is by key, display name, or email against SOUTH_AFRICA_PROFILE_STAFF
+    (or an override list). Calculation lives in the commission engine, not here.
+    """
+    names = sa_staff if sa_staff is not None else SOUTH_AFRICA_PROFILE_STAFF
+    tokens = {
+        str(staff.get("key") or "").strip().lower(),
+        str(staff.get("name") or "").strip().lower(),
+        str(staff.get("email") or "").strip().lower(),
+    }
+    tokens.discard("")
+    if tokens & names:
+        return PROFILE_SOUTH_AFRICA
+    return PROFILE_DEFAULT
 
 
 class ConfigError(RuntimeError):

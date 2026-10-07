@@ -9,8 +9,8 @@ import random
 from pathlib import Path
 from typing import Any
 
-from .commission import MonthlyQualification, qualify_month, sum_job_commissions
-from .settings import COMPANY_NAME
+from .commission import MonthlyQualification, monthly_min_profit_for, qualify_month, sum_job_commissions
+from .settings import COMPANY_NAME, PROFILE_DEFAULT
 from .util import format_margin, gbp, money
 
 D = __import__("decimal").Decimal
@@ -206,7 +206,7 @@ def render_qualification(q: MonthlyQualification, *, icon_src: str, quote: str) 
         status_bg, status_fg, lead = (
             "#fff6dc",
             "#7a5b00",
-            "Payable commission stays at £0.00 until month profit reaches £11,000.",
+            f"Payable commission stays at £0.00 until month profit reaches {gbp(q.min_profit)}.",
         )
     coach = ""
     if q.coach_line:
@@ -544,7 +544,11 @@ def build_email_body(
     )
 
 
-def qualify_rows(job_rows: list[dict[str, Any]]) -> MonthlyQualification:
+def qualify_rows(
+    job_rows: list[dict[str, Any]],
+    *,
+    profile: str = PROFILE_DEFAULT,
+) -> MonthlyQualification:
     total_sale = money(sum((r["sale"] for r in job_rows), ZERO))
     total_po = money(sum((r["cost"] for r in job_rows), ZERO))
     total_labour = money(sum((r.get("labour") or ZERO for r in job_rows), ZERO))
@@ -557,4 +561,5 @@ def qualify_rows(job_rows: list[dict[str, Any]]) -> MonthlyQualification:
         total_labour=total_labour,
         total_po=total_po,
         job_profits=[r["profit"] for r in job_rows],
+        min_profit=monthly_min_profit_for(profile),
     )
