@@ -109,7 +109,7 @@ def build_month_packs(
         )
         profile = commission_profile_for(meta)
         job_rows = attach_job_commissions(main_rows, profile=profile)
-        qualification = qualify_rows(job_rows)
+        qualification = qualify_rows(job_rows, profile=profile)
         quote = pick_quote()
         full_html = build_full_html(
             staff_name=meta["name"],

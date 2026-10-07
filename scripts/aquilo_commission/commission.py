@@ -20,6 +20,7 @@ MAX_JOB_PENALTY = D("30")
 SMALL_JOB_SALE = D("150")
 SMALL_JOB_MAX_PENALTY = D("5")
 MONTHLY_MIN_PROFIT = D("11000")
+SOUTH_AFRICA_MONTHLY_MIN_PROFIT = D("8000")
 MONTHLY_MIN_MARGIN_MESSAGE = D("40")
 
 # Same sale bands and margin thresholds as the default Aquilo UK scheme.
@@ -379,7 +380,18 @@ def _ceil_jobs(remaining: D, avg_profit: D) -> int | None:
     return int(jobs)
 
 
-def coach_line_for(remaining: D, job_profits: list[D]) -> str:
+def monthly_min_profit_for(profile: str) -> D:
+    if profile == PROFILE_SOUTH_AFRICA:
+        return SOUTH_AFRICA_MONTHLY_MIN_PROFIT
+    return MONTHLY_MIN_PROFIT
+
+
+def coach_line_for(
+    remaining: D,
+    job_profits: list[D],
+    *,
+    min_profit: D = MONTHLY_MIN_PROFIT,
+) -> str:
     if remaining <= 0:
         return ""
     positive = [p for p in job_profits if p > 0]
@@ -390,11 +402,11 @@ def coach_line_for(remaining: D, job_profits: list[D]) -> str:
         return (
             f"About {jobs_needed} more typical job{'s' if jobs_needed != 1 else ''} "
             f"(recent average profit {gbp(avg)}) — or roughly {gbp(typical_sale)} invoiced "
-            f"at ~40% margin — to unlock {gbp(MONTHLY_MIN_PROFIT)} profit."
+            f"at ~40% margin — to unlock {gbp(min_profit)} profit."
         )
     return (
         f"{gbp(remaining)} profit still needed. Roughly {gbp(typical_sale)} invoiced "
-        f"at ~40% margin would unlock {gbp(MONTHLY_MIN_PROFIT)} profit."
+        f"at ~40% margin would unlock {gbp(min_profit)} profit."
     )
 
 
@@ -417,7 +429,7 @@ def qualify_month(
     margin = exact_margin_percent(revenue, profit)
     qualified = profit >= min_profit
     remaining = money(max(ZERO, min_profit - profit))
-    coach = "" if qualified else coach_line_for(remaining, job_profits or [])
+    coach = "" if qualified else coach_line_for(remaining, job_profits or [], min_profit=min_profit)
     return MonthlyQualification(
         total_revenue=revenue,
         total_profit=profit,

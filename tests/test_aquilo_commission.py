@@ -9,7 +9,9 @@ from scripts.aquilo_commission.commission import (
     MONTHLY_MIN_PROFIT,
     SMALL_JOB_MAX_PENALTY,
     SMALL_JOB_SALE,
+    SOUTH_AFRICA_MONTHLY_MIN_PROFIT,
     SOUTH_AFRICA_TIERS,
+    monthly_min_profit_for,
     attach_job_commissions,
     calculate_job_commission,
     progressive_relief,
@@ -1096,6 +1098,48 @@ class SouthAfricaProfileTest(unittest.TestCase):
         result = calculate_job_commission("1500", "525", profile=profile)
         self.assertEqual(result.commission, D("15.75"))
         self.assertEqual(result.rate, D("0.03"))
+
+    def test_south_africa_payable_gate_is_8000(self) -> None:
+        self.assertEqual(SOUTH_AFRICA_MONTHLY_MIN_PROFIT, D("8000"))
+        self.assertEqual(monthly_min_profit_for(PROFILE_SOUTH_AFRICA), D("8000"))
+        self.assertEqual(monthly_min_profit_for(PROFILE_DEFAULT), D("11000"))
+        qualified = qualify_month("20000", "8000", "120", min_profit=SOUTH_AFRICA_MONTHLY_MIN_PROFIT)
+        self.assertTrue(qualified.qualified)
+        self.assertEqual(qualified.payable_commission, D("120.00"))
+        self.assertEqual(qualified.min_profit, D("8000"))
+        short = qualify_month("20000", "7999.99", "120", min_profit=SOUTH_AFRICA_MONTHLY_MIN_PROFIT)
+        self.assertFalse(short.qualified)
+        self.assertEqual(short.payable_commission, D("0.00"))
+        self.assertIn("£8,000", short.coach_line)
+        self.assertNotIn("£11,000", short.coach_line)
+        uk_at_8000 = qualify_month("20000", "8000", "120")
+        self.assertFalse(uk_at_8000.qualified)
+        self.assertEqual(uk_at_8000.payable_commission, D("0.00"))
+        rows = attach_job_commissions(
+            [
+                {
+                    "date": dt.date(2026, 10, 2),
+                    "reference": "GR/1",
+                    "sale": D("1500"),
+                    "cost": D("975"),
+                    "profit": D("525"),
+                }
+            ],
+            profile=PROFILE_SOUTH_AFRICA,
+        )
+        q = qualify_rows(rows, profile=PROFILE_SOUTH_AFRICA)
+        self.assertEqual(q.min_profit, D("8000"))
+        html_body = build_full_html(
+            staff_name="Alex Example",
+            month_label="October 2026",
+            job_rows=rows,
+            anomaly_rows=[],
+            review_rows=[],
+            qualification=q,
+        )
+        self.assertIn("£8,000.00", html_body)
+        self.assertNotIn("£11,000", html_body)
+        self.assertNotIn("South Africa", html_body)
 
     def test_south_africa_list_is_the_profile_mapping(self) -> None:
         self.assertIn("kayladurandt@aquilofacilities.co.uk", SOUTH_AFRICA_PROFILE_STAFF)
