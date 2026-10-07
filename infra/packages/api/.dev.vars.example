@@ -2,3 +2,9 @@ SESSION_SECRET=local-dev-session-secret-change-before-production
 ALLOWED_ORIGINS=http://localhost:5173,http://127.0.0.1:5173
 INITIAL_PLATFORM_ADMIN_EMAIL=admin@infra.local
 INITIAL_PLATFORM_ADMIN_PASSWORD=ChangeMeBeforeProduction!
+ENVIRONMENT=development
+# Leave the cookie domain unset for local dev so the session cookie is scoped to
+# localhost. wrangler.toml pins these to the production portal domain, which would
+# otherwise make the cookie unusable on localhost and break browser login.
+PORTAL_COOKIE_DOMAIN=
+PORTAL_BASE_DOMAIN=
