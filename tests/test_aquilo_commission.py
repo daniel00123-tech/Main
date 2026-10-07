@@ -9,10 +9,12 @@ from scripts.aquilo_commission.commission import (
     MONTHLY_MIN_PROFIT,
     SMALL_JOB_MAX_PENALTY,
     SMALL_JOB_SALE,
+    SOUTH_AFRICA_TIERS,
     attach_job_commissions,
     calculate_job_commission,
     progressive_relief,
     qualify_month,
+    south_africa_order_penalty,
     sum_job_commissions,
 )
 from scripts.aquilo_commission.engine import (
@@ -61,9 +63,13 @@ from scripts.aquilo_commission.settings import (
     GO_LIVE_TO_ALLOWLIST,
     LABOUR_RATE,
     PREVIEW_TO_ALLOWLIST,
+    PROFILE_DEFAULT,
+    PROFILE_SOUTH_AFRICA,
+    SOUTH_AFRICA_PROFILE_STAFF,
     STAFF,
     AquiloSettings,
     ConfigError,
+    commission_profile_for,
     staff_mailbox,
 )
 from scripts.aquilo_commission.util import money
@@ -967,6 +973,10 @@ class HtmlAndEmailGuardTest(unittest.TestCase):
         self.assertEqual(staff_mailbox("Laura Menegon"), "laura.menegon@aquilofacilities.co.uk")
         self.assertEqual(staff_mailbox("Amy Bradley"), "amy.bradley@aquilofacilities.co.uk")
         for meta in STAFF.values():
+            if meta["key"] == "kayla":
+                # Live mailbox is kayladurandt@ — not firstname.lastname.
+                self.assertEqual(meta["email"], "kayladurandt@aquilofacilities.co.uk")
+                continue
             self.assertEqual(meta["email"], staff_mailbox(meta["name"]))
         self.assertEqual(
             GO_LIVE_TO_ALLOWLIST,
@@ -974,8 +984,127 @@ class HtmlAndEmailGuardTest(unittest.TestCase):
                 "isabel.strong@aquilofacilities.co.uk",
                 "laura.menegon@aquilofacilities.co.uk",
                 "amy.bradley@aquilofacilities.co.uk",
+                "kayladurandt@aquilofacilities.co.uk",
             },
         )
+
+
+class SouthAfricaProfileTest(unittest.TestCase):
+    def test_positive_earn_rates_are_1_2_3(self) -> None:
+        rates = {
+            band["rate"]
+            for tier in SOUTH_AFRICA_TIERS
+            for band in tier["bands"]
+            if band["rate"] != 0
+        }
+        self.assertEqual(rates, {D("0.01"), D("0.02"), D("0.03")})
+        one = calculate_job_commission("1500", "525", profile=PROFILE_SOUTH_AFRICA)
+        self.assertEqual(one.commission, D("5.25"))
+        self.assertEqual(one.rate, D("0.01"))
+        two = calculate_job_commission("1500", D("1500") * D("0.45"), profile=PROFILE_SOUTH_AFRICA)
+        self.assertEqual(two.commission, money(D("1500") * D("0.45") * D("0.02")))
+        self.assertEqual(two.rate, D("0.02"))
+        three = calculate_job_commission("1500", D("1500") * D("0.50"), profile=PROFILE_SOUTH_AFRICA)
+        self.assertEqual(three.commission, money(D("1500") * D("0.50") * D("0.03")))
+        self.assertEqual(three.rate, D("0.03"))
+
+    def test_mid_and_large_sale_bands_keep_uk_thresholds(self) -> None:
+        mid_one = calculate_job_commission("3000", D("3000") * D("0.20"), profile=PROFILE_SOUTH_AFRICA)
+        self.assertEqual(mid_one.rate, D("0.01"))
+        mid_two = calculate_job_commission("3000", D("3000") * D("0.35"), profile=PROFILE_SOUTH_AFRICA)
+        self.assertEqual(mid_two.rate, D("0.02"))
+        mid_three = calculate_job_commission("3000", D("3000") * D("0.45"), profile=PROFILE_SOUTH_AFRICA)
+        self.assertEqual(mid_three.rate, D("0.03"))
+        large_one = calculate_job_commission("5000", D("5000") * D("0.15"), profile=PROFILE_SOUTH_AFRICA)
+        self.assertEqual(large_one.rate, D("0.01"))
+        large_two = calculate_job_commission("5000", D("5000") * D("0.25"), profile=PROFILE_SOUTH_AFRICA)
+        self.assertEqual(large_two.rate, D("0.02"))
+        large_three = calculate_job_commission("5000", D("5000") * D("0.35"), profile=PROFILE_SOUTH_AFRICA)
+        self.assertEqual(large_three.rate, D("0.03"))
+
+    def test_under_2000_dead_band_is_zero(self) -> None:
+        result = calculate_job_commission("1500", D("1500") * D("0.25"), profile=PROFILE_SOUTH_AFRICA)
+        self.assertEqual(result.commission, D("0.00"))
+        self.assertFalse(result.is_penalty)
+
+    def test_stepped_below_floor_penalties(self) -> None:
+        self.assertEqual(south_africa_order_penalty(D("499.99")), D("1.50"))
+        self.assertEqual(south_africa_order_penalty(D("500")), D("5.00"))
+        self.assertEqual(south_africa_order_penalty(D("1999.99")), D("5.00"))
+        self.assertEqual(south_africa_order_penalty(D("2000")), D("10.00"))
+        self.assertEqual(south_africa_order_penalty(D("4999.99")), D("10.00"))
+        self.assertEqual(south_africa_order_penalty(D("5000")), D("25.00"))
+        under_500 = calculate_job_commission("400", "20", cost="380", profile=PROFILE_SOUTH_AFRICA)
+        self.assertEqual(under_500.commission, D("-1.50"))
+        band_500 = calculate_job_commission("1000", "100", cost="900", profile=PROFILE_SOUTH_AFRICA)
+        self.assertEqual(band_500.commission, D("-5.00"))
+        band_2000 = calculate_job_commission("3000", "200", cost="2800", profile=PROFILE_SOUTH_AFRICA)
+        self.assertEqual(band_2000.commission, D("-10.00"))
+        band_5000 = calculate_job_commission("6000", "200", cost="5800", profile=PROFILE_SOUTH_AFRICA)
+        self.assertEqual(band_5000.commission, D("-25.00"))
+        uk_catchup = calculate_job_commission("3000", "200", cost="2800")
+        self.assertNotEqual(band_2000.commission, uk_catchup.commission)
+        self.assertEqual(uk_catchup.commission, D("-30.00"))
+
+    def test_po_only_uses_stepped_order_penalty(self) -> None:
+        small = calculate_job_commission("0", "-400", cost="400", profile=PROFILE_SOUTH_AFRICA)
+        self.assertEqual(small.commission, D("-1.50"))
+        mid = calculate_job_commission("0", "-1000", cost="1000", profile=PROFILE_SOUTH_AFRICA)
+        self.assertEqual(mid.commission, D("-5.00"))
+        large = calculate_job_commission("0", "-3000", cost="3000", profile=PROFILE_SOUTH_AFRICA)
+        self.assertEqual(large.commission, D("-10.00"))
+        huge = calculate_job_commission("0", "-6000", cost="6000", profile=PROFILE_SOUTH_AFRICA)
+        self.assertEqual(huge.commission, D("-25.00"))
+        uk_po = calculate_job_commission("0", "-664", cost="664")
+        sa_po = calculate_job_commission("0", "-664", cost="664", profile=PROFILE_SOUTH_AFRICA)
+        self.assertEqual(uk_po.commission, D("-5.00"))
+        self.assertEqual(sa_po.commission, D("-5.00"))
+        self.assertEqual(uk_po.raw_penalty, D("132.80"))
+        self.assertEqual(sa_po.raw_penalty, D("5.00"))
+
+    def test_assigned_staff_automatically_use_south_africa_rules(self) -> None:
+        staff = {
+            "name": "Alex Example",
+            "email": "alex.example@aquilofacilities.co.uk",
+            "key": "alex",
+        }
+        sa_list = frozenset(
+            {
+                "alex",
+                "alex example",
+                "alex.example@aquilofacilities.co.uk",
+            }
+        )
+        profile = commission_profile_for(staff, sa_staff=sa_list)
+        self.assertEqual(profile, PROFILE_SOUTH_AFRICA)
+        result = calculate_job_commission("1500", "525", profile=profile)
+        self.assertEqual(result.commission, D("5.25"))
+        attached = attach_job_commissions(
+            [{"sale": D("1500"), "cost": D("975"), "profit": D("525")}],
+            profile=profile,
+        )
+        self.assertEqual(attached[0]["commission"], D("5.25"))
+
+    def test_unassigned_staff_keep_default_uk_rules(self) -> None:
+        staff = {
+            "name": "Alex Example",
+            "email": "alex.example@aquilofacilities.co.uk",
+            "key": "alex",
+        }
+        profile = commission_profile_for(staff)
+        self.assertEqual(profile, PROFILE_DEFAULT)
+        result = calculate_job_commission("1500", "525", profile=profile)
+        self.assertEqual(result.commission, D("15.75"))
+        self.assertEqual(result.rate, D("0.03"))
+
+    def test_south_africa_list_is_the_profile_mapping(self) -> None:
+        self.assertIn("kayladurandt@aquilofacilities.co.uk", SOUTH_AFRICA_PROFILE_STAFF)
+        self.assertIn("kayla du randt", SOUTH_AFRICA_PROFILE_STAFF)
+        self.assertEqual(commission_profile_for(STAFF["kayla"]), PROFILE_SOUTH_AFRICA)
+        self.assertEqual(commission_profile_for(STAFF["isabel"]), PROFILE_DEFAULT)
+        self.assertEqual(commission_profile_for(STAFF["laura"]), PROFILE_DEFAULT)
+        self.assertEqual(commission_profile_for(STAFF["amy"]), PROFILE_DEFAULT)
+        self.assertEqual(STAFF["kayla"]["category_id"], 142893)
 
 
 class FinanceWindowTest(unittest.TestCase):

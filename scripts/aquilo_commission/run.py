@@ -28,6 +28,7 @@ from .settings import (
     STAFF,
     AquiloSettings,
     ConfigError,
+    commission_profile_for,
     load_settings,
     report_month,
 )
@@ -106,7 +107,8 @@ def build_month_packs(
             resource_groups=groups,
             job_cost_loader=job_cost_loader,
         )
-        job_rows = attach_job_commissions(main_rows)
+        profile = commission_profile_for(meta)
+        job_rows = attach_job_commissions(main_rows, profile=profile)
         qualification = qualify_rows(job_rows)
         quote = pick_quote()
         full_html = build_full_html(
@@ -132,6 +134,7 @@ def build_month_packs(
         )
         packs[key] = {
             "staff": meta,
+            "profile": profile,
             "month_label": month_label,
             "job_rows": job_rows,
             "anomaly_rows": anomaly_rows,
@@ -158,6 +161,7 @@ def summarise(pack: dict[str, Any]) -> dict[str, Any]:
     return {
         "staff": pack["staff"]["name"],
         "company": COMPANY_NAME,
+        "profile": pack.get("profile") or commission_profile_for(pack["staff"]),
         "month": pack["month_label"],
         "rows": len(pack["job_rows"]),
         "anomalies": len(pack["anomaly_rows"]),
@@ -173,7 +177,7 @@ def summarise(pack: dict[str, Any]) -> dict[str, Any]:
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Aquilo AM commission scorecards (JobWatch read-only)")
-    parser.add_argument("--staff", default="all", help="all, or comma-separated isabel,laura,amy")
+    parser.add_argument("--staff", default="all", help="all, or comma-separated isabel,laura,amy,kayla")
     parser.add_argument("--year", type=int, default=0)
     parser.add_argument("--month", type=int, default=0)
     parser.add_argument("--send", action="store_true", help="Email preview packs (one per staff)")
@@ -189,7 +193,7 @@ def selected_staff(raw: str) -> list[str]:
     for part in raw.split(","):
         key = part.strip().lower()
         if key not in STAFF:
-            raise ConfigError(f"Unknown Aquilo staff key {part!r}. Use isabel, laura, amy.")
+            raise ConfigError(f"Unknown Aquilo staff key {part!r}. Use isabel, laura, amy, kayla.")
         keys.append(key)
     return keys
 
@@ -228,11 +232,13 @@ def main(argv: list[str] | None = None) -> int:
         summary["html"] = str(path)
         summaries.append(summary)
         if args.send:
-            prefix = "PREVIEW " if not settings.go_live else ""
-            subject = (
-                f"{prefix}{pack['staff']['name']} — {pack['month_label']} — "
-                f"{COMPANY_NAME} commission"
-            )
+            if settings.go_live:
+                subject = f"{pack['staff']['name']} — {pack['month_label']} commission report"
+            else:
+                subject = (
+                    f"PREVIEW {pack['staff']['name']} — {pack['month_label']} — "
+                    f"{COMPANY_NAME} commission"
+                )
             send_settings = settings
             if settings.go_live:
                 send_settings = replace(settings, to_email=pack["staff"]["email"])

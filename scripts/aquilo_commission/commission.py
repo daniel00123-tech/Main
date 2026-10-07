@@ -9,6 +9,7 @@ import decimal
 from dataclasses import dataclass
 from typing import Any
 
+from .settings import PROFILE_DEFAULT, PROFILE_SOUTH_AFRICA
 from .util import as_decimal, gbp, money
 
 D = decimal.Decimal
@@ -20,6 +21,55 @@ SMALL_JOB_SALE = D("150")
 SMALL_JOB_MAX_PENALTY = D("5")
 MONTHLY_MIN_PROFIT = D("11000")
 MONTHLY_MIN_MARGIN_MESSAGE = D("40")
+
+# Same sale bands and margin thresholds as the default Aquilo UK scheme.
+# Positive earn rates are 1% / 2% / 3% (cap 3%). Penalties are stepped
+# order-size minuses — not catch-up, not 20% of PO, not a flat £5.
+SOUTH_AFRICA_TIERS: list[dict[str, Any]] = [
+    {
+        "minRevenue": D("0"),
+        "maxRevenue": D("1999.99"),
+        "penaltyBelowMargin": D("20"),
+        "bands": [
+            {"minMargin": D("20"), "maxMargin": D("29.99"), "rate": D("0")},
+            {"minMargin": D("30"), "maxMargin": D("41.99"), "rate": D("0.01")},
+            {"minMargin": D("42"), "maxMargin": D("49.99"), "rate": D("0.02")},
+            {"minMargin": D("50"), "maxMargin": None, "rate": D("0.03")},
+        ],
+    },
+    {
+        "minRevenue": D("2000"),
+        "maxRevenue": D("4999.99"),
+        "penaltyBelowMargin": D("12.5"),
+        "bands": [
+            {"minMargin": D("12.5"), "maxMargin": D("34.99"), "rate": D("0.01")},
+            {"minMargin": D("35"), "maxMargin": D("42.49"), "rate": D("0.02")},
+            {"minMargin": D("42.5"), "maxMargin": None, "rate": D("0.03")},
+        ],
+    },
+    {
+        "minRevenue": D("5000"),
+        "maxRevenue": None,
+        "penaltyBelowMargin": D("10"),
+        "bands": [
+            {"minMargin": D("10"), "maxMargin": D("19.99"), "rate": D("0.01")},
+            {"minMargin": D("20"), "maxMargin": D("31.99"), "rate": D("0.02")},
+            {"minMargin": D("32"), "maxMargin": None, "rate": D("0.03")},
+        ],
+    },
+]
+
+
+def south_africa_order_penalty(order_size: D) -> D:
+    """Stepped minus from invoiced sale, or PO when there is no sale."""
+    if order_size < D("500"):
+        return D("1.50")
+    if order_size < D("2000"):
+        return D("5.00")
+    if order_size < D("5000"):
+        return D("10.00")
+    return D("25.00")
+
 
 COMMISSION_TIERS: list[dict[str, Any]] = [
     {
@@ -126,10 +176,14 @@ def calculate_job_commission(
     *,
     cost: Any = None,
     tiers: list[dict[str, Any]] | None = None,
+    profile: str = PROFILE_DEFAULT,
 ) -> JobCommission:
     sale = as_decimal(revenue)
     job_profit = as_decimal(profit)
     job_cost = as_decimal(cost) if cost is not None else (sale - job_profit)
+    if profile == PROFILE_SOUTH_AFRICA:
+        scheme = tiers if tiers is not None else SOUTH_AFRICA_TIERS
+        return _calculate_south_africa_job_commission(sale, job_profit, job_cost, scheme)
     scheme = tiers if tiers is not None else COMMISSION_TIERS
     tier = select_tier(sale if sale > 0 else ZERO, scheme)
     floor = as_decimal(tier["penaltyBelowMargin"])
@@ -193,12 +247,95 @@ def calculate_job_commission(
     )
 
 
-def attach_job_commissions(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def _calculate_south_africa_job_commission(
+    sale: D,
+    job_profit: D,
+    job_cost: D,
+    scheme: list[dict[str, Any]],
+) -> JobCommission:
+    tier = select_tier(sale if sale > 0 else ZERO, scheme)
+    floor = as_decimal(tier["penaltyBelowMargin"])
+    margin = exact_margin_percent(sale, job_profit)
+    no_sale = sale <= 0
+    below_floor = margin is not None and margin < floor
+    is_loss = job_profit < 0
+
+    if no_sale and job_cost > 0:
+        raw = south_africa_order_penalty(job_cost)
+        return JobCommission(
+            revenue=money(sale),
+            profit=money(job_profit),
+            margin=margin,
+            commission=money(-raw),
+            is_penalty=True,
+            rate=None,
+            tier_min_revenue=as_decimal(tier["minRevenue"]),
+            penalty_below_margin=floor,
+            raw_penalty=raw,
+        )
+    if no_sale:
+        return JobCommission(
+            revenue=money(sale),
+            profit=money(job_profit),
+            margin=margin,
+            commission=ZERO,
+            is_penalty=False,
+            rate=None,
+            tier_min_revenue=as_decimal(tier["minRevenue"]),
+            penalty_below_margin=floor,
+            raw_penalty=ZERO,
+        )
+    if is_loss or below_floor:
+        raw = south_africa_order_penalty(sale)
+        return JobCommission(
+            revenue=money(sale),
+            profit=money(job_profit),
+            margin=margin,
+            commission=money(-raw),
+            is_penalty=True,
+            rate=None,
+            tier_min_revenue=as_decimal(tier["minRevenue"]),
+            penalty_below_margin=floor,
+            raw_penalty=raw,
+        )
+    if margin is None:
+        raise ValueError("Positive-sale commission requires a defined margin")
+    band = select_band(margin, list(tier["bands"]))
+    if band is None:
+        raise ValueError(
+            f"No commission band for margin {margin} in tier minRevenue={tier['minRevenue']}"
+        )
+    rate = as_decimal(band["rate"])
+    return JobCommission(
+        revenue=money(sale),
+        profit=money(job_profit),
+        margin=margin,
+        commission=money(job_profit * rate),
+        is_penalty=False,
+        rate=rate,
+        tier_min_revenue=as_decimal(tier["minRevenue"]),
+        penalty_below_margin=floor,
+        raw_penalty=ZERO,
+    )
+
+
+def attach_job_commissions(
+    rows: list[dict[str, Any]],
+    *,
+    profile: str = PROFILE_DEFAULT,
+    tiers: list[dict[str, Any]] | None = None,
+) -> list[dict[str, Any]]:
     running_profit = ZERO
     running_commission = ZERO
     attached: list[dict[str, Any]] = []
     for row in rows:
-        result = calculate_job_commission(row["sale"], row["profit"], cost=row.get("cost"))
+        result = calculate_job_commission(
+            row["sale"],
+            row["profit"],
+            cost=row.get("cost"),
+            profile=profile,
+            tiers=tiers,
+        )
         running_profit += row["profit"]
         running_commission += result.commission
         attached.append(
