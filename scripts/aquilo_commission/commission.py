@@ -1,11 +1,13 @@
 """Aquilo job-level commission: 3/4/5% of profit, progressive −£30 cap.
 
 Never calculate commission on invoice lines or subtotal rows.
+South Africa staff use a reusable profile (1/2/3% and stepped minuses).
 """
 
 from __future__ import annotations
 
 import decimal
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
@@ -20,6 +22,10 @@ SMALL_JOB_SALE = D("150")
 SMALL_JOB_MAX_PENALTY = D("5")
 MONTHLY_MIN_PROFIT = D("11000")
 MONTHLY_MIN_MARGIN_MESSAGE = D("40")
+SOUTH_AFRICA_MONTHLY_MIN_PROFIT = D("8000")
+
+PROFILE_UK = "uk"
+PROFILE_SOUTH_AFRICA = "south_africa"
 
 COMMISSION_TIERS: list[dict[str, Any]] = [
     {
@@ -54,6 +60,100 @@ COMMISSION_TIERS: list[dict[str, Any]] = [
         ],
     },
 ]
+
+# Same sale bands and margin thresholds as the UK scheme; earn rates only change.
+SOUTH_AFRICA_TIERS: list[dict[str, Any]] = [
+    {
+        "minRevenue": D("0"),
+        "maxRevenue": D("1999.99"),
+        "penaltyBelowMargin": D("20"),
+        "bands": [
+            {"minMargin": D("20"), "maxMargin": D("29.99"), "rate": D("0")},
+            {"minMargin": D("30"), "maxMargin": D("41.99"), "rate": D("0.01")},
+            {"minMargin": D("42"), "maxMargin": D("49.99"), "rate": D("0.02")},
+            {"minMargin": D("50"), "maxMargin": None, "rate": D("0.03")},
+        ],
+    },
+    {
+        "minRevenue": D("2000"),
+        "maxRevenue": D("4999.99"),
+        "penaltyBelowMargin": D("12.5"),
+        "bands": [
+            {"minMargin": D("12.5"), "maxMargin": D("34.99"), "rate": D("0.01")},
+            {"minMargin": D("35"), "maxMargin": D("42.49"), "rate": D("0.02")},
+            {"minMargin": D("42.5"), "maxMargin": None, "rate": D("0.03")},
+        ],
+    },
+    {
+        "minRevenue": D("5000"),
+        "maxRevenue": None,
+        "penaltyBelowMargin": D("10"),
+        "bands": [
+            {"minMargin": D("10"), "maxMargin": D("19.99"), "rate": D("0.01")},
+            {"minMargin": D("20"), "maxMargin": D("31.99"), "rate": D("0.02")},
+            {"minMargin": D("32"), "maxMargin": None, "rate": D("0.03")},
+        ],
+    },
+]
+
+
+@dataclass(frozen=True)
+class CommissionProfile:
+    """Reusable commission scheme. Staff mapping lives in settings, not here."""
+
+    key: str
+    tiers: list[dict[str, Any]]
+    monthly_min_profit: D
+    penalty_mode: str
+
+
+UK_PROFILE = CommissionProfile(
+    key=PROFILE_UK,
+    tiers=COMMISSION_TIERS,
+    monthly_min_profit=MONTHLY_MIN_PROFIT,
+    penalty_mode="catchup",
+)
+SOUTH_AFRICA_PROFILE = CommissionProfile(
+    key=PROFILE_SOUTH_AFRICA,
+    tiers=SOUTH_AFRICA_TIERS,
+    monthly_min_profit=SOUTH_AFRICA_MONTHLY_MIN_PROFIT,
+    penalty_mode="stepped",
+)
+PROFILES = {
+    PROFILE_UK: UK_PROFILE,
+    PROFILE_SOUTH_AFRICA: SOUTH_AFRICA_PROFILE,
+}
+
+
+def resolve_profile(profile: CommissionProfile | str | None = None) -> CommissionProfile:
+    if profile is None:
+        return UK_PROFILE
+    if isinstance(profile, CommissionProfile):
+        return profile
+    key = str(profile).strip().lower()
+    if key not in PROFILES:
+        raise ValueError(f"Unknown commission profile {profile!r}")
+    return PROFILES[key]
+
+
+def profile_for_staff(staff: Mapping[str, Any] | None) -> CommissionProfile:
+    from .settings import uses_south_africa_profile
+
+    if uses_south_africa_profile(staff):
+        return SOUTH_AFRICA_PROFILE
+    return UK_PROFILE
+
+
+def south_africa_order_penalty(order_size: Any) -> D:
+    """Stepped minus from invoiced amount, or PO amount when there is no sale."""
+    size = as_decimal(order_size)
+    if size < D("500"):
+        return D("-1.50")
+    if size < D("2000"):
+        return D("-5.00")
+    if size < D("5000"):
+        return D("-10.00")
+    return D("-25.00")
 
 
 def exact_margin_percent(revenue: D, profit: D) -> D | None:
@@ -126,11 +226,13 @@ def calculate_job_commission(
     *,
     cost: Any = None,
     tiers: list[dict[str, Any]] | None = None,
+    profile: CommissionProfile | str | None = None,
 ) -> JobCommission:
+    resolved = resolve_profile(profile)
     sale = as_decimal(revenue)
     job_profit = as_decimal(profit)
     job_cost = as_decimal(cost) if cost is not None else (sale - job_profit)
-    scheme = tiers if tiers is not None else COMMISSION_TIERS
+    scheme = tiers if tiers is not None else resolved.tiers
     tier = select_tier(sale if sale > 0 else ZERO, scheme)
     floor = as_decimal(tier["penaltyBelowMargin"])
     margin = exact_margin_percent(sale, job_profit)
@@ -138,16 +240,30 @@ def calculate_job_commission(
     no_sale = sale <= 0
     is_loss = job_profit < 0
     below_floor = margin is not None and margin < floor
+    stepped = resolved.penalty_mode == "stepped"
 
     raw = ZERO
+    stepped_minus = ZERO
     if no_sale and job_cost > 0:
-        raw = money(job_cost * PENALTY_RATE_PO)
+        if stepped:
+            stepped_minus = south_africa_order_penalty(job_cost)
+            raw = money(abs(stepped_minus))
+        else:
+            raw = money(job_cost * PENALTY_RATE_PO)
     elif (not no_sale) and (is_loss or below_floor):
-        shortfall = (sale * (floor / D("100"))) - job_profit
-        raw = money(shortfall) if shortfall > 0 else ZERO
+        if stepped:
+            stepped_minus = south_africa_order_penalty(sale)
+            raw = money(abs(stepped_minus))
+        else:
+            shortfall = (sale * (floor / D("100"))) - job_profit
+            raw = money(shortfall) if shortfall > 0 else ZERO
 
     if raw > 0:
-        deducted = cap_penalty(-progressive_relief(raw, sale=sale), sale=sale)
+        deducted = (
+            money(stepped_minus)
+            if stepped
+            else cap_penalty(-progressive_relief(raw, sale=sale), sale=sale)
+        )
         return JobCommission(
             revenue=money(sale),
             profit=money(job_profit),
@@ -193,12 +309,22 @@ def calculate_job_commission(
     )
 
 
-def attach_job_commissions(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def attach_job_commissions(
+    rows: list[dict[str, Any]],
+    *,
+    profile: CommissionProfile | str | None = None,
+) -> list[dict[str, Any]]:
     running_profit = ZERO
     running_commission = ZERO
     attached: list[dict[str, Any]] = []
+    resolved = resolve_profile(profile)
     for row in rows:
-        result = calculate_job_commission(row["sale"], row["profit"], cost=row.get("cost"))
+        result = calculate_job_commission(
+            row["sale"],
+            row["profit"],
+            cost=row.get("cost"),
+            profile=resolved,
+        )
         running_profit += row["profit"]
         running_commission += result.commission
         attached.append(
@@ -242,7 +368,12 @@ def _ceil_jobs(remaining: D, avg_profit: D) -> int | None:
     return int(jobs)
 
 
-def coach_line_for(remaining: D, job_profits: list[D]) -> str:
+def coach_line_for(
+    remaining: D,
+    job_profits: list[D],
+    *,
+    min_profit: D = MONTHLY_MIN_PROFIT,
+) -> str:
     if remaining <= 0:
         return ""
     positive = [p for p in job_profits if p > 0]
@@ -253,11 +384,11 @@ def coach_line_for(remaining: D, job_profits: list[D]) -> str:
         return (
             f"About {jobs_needed} more typical job{'s' if jobs_needed != 1 else ''} "
             f"(recent average profit {gbp(avg)}) — or roughly {gbp(typical_sale)} invoiced "
-            f"at ~40% margin — to unlock {gbp(MONTHLY_MIN_PROFIT)} profit."
+            f"at ~40% margin — to unlock {gbp(min_profit)} profit."
         )
     return (
         f"{gbp(remaining)} profit still needed. Roughly {gbp(typical_sale)} invoiced "
-        f"at ~40% margin would unlock {gbp(MONTHLY_MIN_PROFIT)} profit."
+        f"at ~40% margin would unlock {gbp(min_profit)} profit."
     )
 
 
@@ -280,7 +411,7 @@ def qualify_month(
     margin = exact_margin_percent(revenue, profit)
     qualified = profit >= min_profit
     remaining = money(max(ZERO, min_profit - profit))
-    coach = "" if qualified else coach_line_for(remaining, job_profits or [])
+    coach = "" if qualified else coach_line_for(remaining, job_profits or [], min_profit=min_profit)
     return MonthlyQualification(
         total_revenue=revenue,
         total_profit=profit,

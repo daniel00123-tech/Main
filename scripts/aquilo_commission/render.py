@@ -206,7 +206,7 @@ def render_qualification(q: MonthlyQualification, *, icon_src: str, quote: str) 
         status_bg, status_fg, lead = (
             "#fff6dc",
             "#7a5b00",
-            "Payable commission stays at £0.00 until month profit reaches £11,000.",
+            f"Payable commission stays at £0.00 until month profit reaches {gbp(q.min_profit)}.",
         )
     coach = ""
     if q.coach_line:
@@ -544,12 +544,19 @@ def build_email_body(
     )
 
 
-def qualify_rows(job_rows: list[dict[str, Any]]) -> MonthlyQualification:
+def qualify_rows(
+    job_rows: list[dict[str, Any]],
+    *,
+    min_profit: Any = None,
+) -> MonthlyQualification:
     total_sale = money(sum((r["sale"] for r in job_rows), ZERO))
     total_po = money(sum((r["cost"] for r in job_rows), ZERO))
     total_labour = money(sum((r.get("labour") or ZERO for r in job_rows), ZERO))
     total_profit = money(sum((r["profit"] for r in job_rows), ZERO))
     running = sum_job_commissions(job_rows)
+    extras: dict[str, Any] = {}
+    if min_profit is not None:
+        extras["min_profit"] = min_profit
     return qualify_month(
         total_sale,
         total_profit,
@@ -557,4 +564,5 @@ def qualify_rows(job_rows: list[dict[str, Any]]) -> MonthlyQualification:
         total_labour=total_labour,
         total_po=total_po,
         job_profits=[r["profit"] for r in job_rows],
+        **extras,
     )

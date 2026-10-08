@@ -10,7 +10,7 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
-from .commission import attach_job_commissions
+from .commission import attach_job_commissions, profile_for_staff
 from .engine import build_staff_report, job_id_of
 from .jobwatch import (
     AquiloJobWatchClient,
@@ -106,8 +106,9 @@ def build_month_packs(
             resource_groups=groups,
             job_cost_loader=job_cost_loader,
         )
-        job_rows = attach_job_commissions(main_rows)
-        qualification = qualify_rows(job_rows)
+        profile = profile_for_staff(meta)
+        job_rows = attach_job_commissions(main_rows, profile=profile)
+        qualification = qualify_rows(job_rows, min_profit=profile.monthly_min_profit)
         quote = pick_quote()
         full_html = build_full_html(
             staff_name=meta["name"],
@@ -173,7 +174,7 @@ def summarise(pack: dict[str, Any]) -> dict[str, Any]:
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Aquilo AM commission scorecards (JobWatch read-only)")
-    parser.add_argument("--staff", default="all", help="all, or comma-separated isabel,laura,amy")
+    parser.add_argument("--staff", default="all", help="all, or comma-separated isabel,laura,amy,kayla")
     parser.add_argument("--year", type=int, default=0)
     parser.add_argument("--month", type=int, default=0)
     parser.add_argument("--send", action="store_true", help="Email preview packs (one per staff)")
@@ -189,7 +190,7 @@ def selected_staff(raw: str) -> list[str]:
     for part in raw.split(","):
         key = part.strip().lower()
         if key not in STAFF:
-            raise ConfigError(f"Unknown Aquilo staff key {part!r}. Use isabel, laura, amy.")
+            raise ConfigError(f"Unknown Aquilo staff key {part!r}. Use isabel, laura, amy, kayla.")
         keys.append(key)
     return keys
 
