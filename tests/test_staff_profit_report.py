@@ -8,13 +8,22 @@ from scripts.staff_commission import (
     sum_job_commissions,
 )
 from scripts.staff_profit_report import (
+    DEFAULT_MAIL_CC,
+    DEFAULT_MAIL_TO,
     RUN_EDGE,
+    STAFF,
     build_html,
     build_staff_rows,
     commission_style,
+    current_london_month,
     daily_totals,
+    graph_mail_payload,
     is_missing_po_anomaly,
     iter_display_rows,
+    match_category_id,
+    parse_args,
+    report_period,
+    resolve_staff,
 )
 
 
@@ -497,6 +506,56 @@ class CompleteGroupReportingTest(unittest.TestCase):
         self.assertEqual(anomaly_rows, [])
         self.assertEqual(main_rows[0]["sale"], D("120.00"))
         self.assertEqual(main_rows[0]["cost"], D("0.00"))
+
+
+class AutomationDefaultsTest(unittest.TestCase):
+    def test_known_staff_category_ids(self) -> None:
+        self.assertEqual(STAFF["sharon"]["category_id"], 132264)
+        self.assertEqual(STAFF["ella"]["category_id"], 132225)
+        self.assertEqual(STAFF["lauren"]["category_id"], 132263)
+        self.assertEqual(resolve_staff("Sharon")["category_id"], 132264)
+        self.assertEqual(resolve_staff("ella")["name"], "Ella")
+
+    def test_unknown_staff_uses_exact_category_lookup_and_does_not_guess(self) -> None:
+        rows = [
+            {"Id": 111, "Name": "Alex"},
+            {"Id": 222, "Name": "Alexandra"},
+        ]
+        self.assertEqual(match_category_id("Alex", rows), 111)
+        with self.assertRaises(Exception):
+            match_category_id("Alec", rows)
+
+    def test_email_always_goes_to_sharon_and_cc_ella(self) -> None:
+        self.assertEqual(DEFAULT_MAIL_TO, "sharon@elvexpropertyservices.com")
+        self.assertEqual(DEFAULT_MAIL_CC, "ella@elvexpropertyservices.com")
+        payload = graph_mail_payload(
+            "Sharon — October 2026 — commission report",
+            "<p>ok</p>",
+            DEFAULT_MAIL_TO,
+            DEFAULT_MAIL_CC,
+        )
+        self.assertTrue(payload["saveToSentItems"])
+        self.assertEqual(
+            payload["message"]["toRecipients"][0]["emailAddress"]["address"],
+            "sharon@elvexpropertyservices.com",
+        )
+        self.assertEqual(
+            payload["message"]["ccRecipients"][0]["emailAddress"]["address"],
+            "ella@elvexpropertyservices.com",
+        )
+
+    def test_send_uses_current_london_month_not_august(self) -> None:
+        year, month = current_london_month()
+        start, end = report_period(2026, 8, sending=True)
+        self.assertEqual(start.year, year)
+        self.assertEqual(start.month, month)
+        self.assertNotEqual((start.year, start.month), (2026, 8))
+        args = parse_args([])
+        self.assertEqual(args.staff, "sharon")
+        self.assertEqual(args.year, year)
+        self.assertEqual(args.month, month)
+        self.assertEqual(args.to, DEFAULT_MAIL_TO)
+        self.assertEqual(args.cc, DEFAULT_MAIL_CC)
 
 
 if __name__ == "__main__":
