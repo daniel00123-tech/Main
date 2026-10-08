@@ -7,7 +7,7 @@ import decimal
 import os
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Mapping
+from typing import Any, Mapping
 from zoneinfo import ZoneInfo
 
 D = decimal.Decimal
@@ -77,9 +77,36 @@ STAFF = {
         "key": "amy",
         "email": "amy.bradley@aquilofacilities.co.uk",
     },
+    "kayla": {
+        "name": "Kayla Du Randt",
+        "category_id": 142893,
+        "key": "kayla",
+        "email": "kayla.durandt@aquilofacilities.co.uk",
+    },
 }
 STAFF_BY_CATEGORY = {meta["category_id"]: meta for meta in STAFF.values()}
 GO_LIVE_TO_ALLOWLIST = frozenset(meta["email"] for meta in STAFF.values())
+
+# Names and emails on this list use the reusable South Africa commission profile.
+# Add a future SA person here (and to STAFF) — do not copy calculation logic.
+SOUTH_AFRICA_PROFILE_STAFF = frozenset(
+    {
+        "kayla du randt",
+        "kayla.durandt@aquilofacilities.co.uk",
+    }
+)
+
+
+def uses_south_africa_profile(staff: Mapping[str, Any] | None) -> bool:
+    if not staff:
+        return False
+    identifiers = {
+        str(staff.get("name") or "").strip().lower(),
+        str(staff.get("email") or "").strip().lower(),
+        str(staff.get("key") or "").strip().lower(),
+    }
+    identifiers.discard("")
+    return bool(identifiers & SOUTH_AFRICA_PROFILE_STAFF)
 
 
 class ConfigError(RuntimeError):
@@ -87,11 +114,16 @@ class ConfigError(RuntimeError):
 
 
 def staff_mailbox(full_name: str) -> str:
-    """firstname.lastname@aquilofacilities.co.uk — used only after go-live."""
+    """firstname.lastname@aquilofacilities.co.uk — used only after go-live.
+
+    Remaining name parts are concatenated so 'Kayla Du Randt' becomes
+    kayla.durandt@… rather than kayla.randt@….
+    """
     parts = [part for part in full_name.strip().split() if part]
     if len(parts) < 2:
         raise ConfigError(f"Cannot build an Aquilo mailbox from {full_name!r}")
-    return f"{parts[0].lower()}.{parts[-1].lower()}@{AQUILO_STAFF_DOMAIN}"
+    last = "".join(parts[1:]).lower()
+    return f"{parts[0].lower()}.{last}@{AQUILO_STAFF_DOMAIN}"
 
 
 def _clean(value: str) -> str:
