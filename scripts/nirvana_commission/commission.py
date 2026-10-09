@@ -36,9 +36,10 @@ COMMISSION_TIERS: list[dict[str, Any]] = [
     {
         "minRevenue": D("2000"),
         "maxRevenue": D("4999.99"),
-        "penaltyBelowMargin": D("12.5"),
+        "penaltyBelowMargin": D("20"),
         "bands": [
-            {"minMargin": D("12.5"), "maxMargin": D("34.99"), "rate": D("0.03")},
+            # 20.0% on the report is £0. The 3% band starts at the next shown tenth.
+            {"minMargin": D("20.05"), "maxMargin": D("34.99"), "rate": D("0.03")},
             {"minMargin": D("35"), "maxMargin": D("42.49"), "rate": D("0.04")},
             {"minMargin": D("42.5"), "maxMargin": None, "rate": D("0.05")},
         ],
@@ -46,10 +47,10 @@ COMMISSION_TIERS: list[dict[str, Any]] = [
     {
         "minRevenue": D("5000"),
         "maxRevenue": None,
-        "penaltyBelowMargin": D("10"),
+        "penaltyBelowMargin": D("20"),
         "bands": [
-            {"minMargin": D("10"), "maxMargin": D("19.99"), "rate": D("0.03")},
-            {"minMargin": D("20"), "maxMargin": D("31.99"), "rate": D("0.04")},
+            # 20.0% on the report is £0. The 4% band starts at the next shown tenth.
+            {"minMargin": D("20.05"), "maxMargin": D("31.99"), "rate": D("0.04")},
             {"minMargin": D("32"), "maxMargin": None, "rate": D("0.05")},
         ],
     },
@@ -60,6 +61,14 @@ def exact_margin_percent(revenue: D, profit: D) -> D | None:
     if revenue == 0:
         return None
     return profit / revenue * D("100")
+
+
+def shown_margin_percent(margin: D) -> D:
+    """Margin as printed on the report, to one decimal place.
+
+    20.0% is the zero line. 19.9% and lower is below it.
+    """
+    return margin.quantize(D("0.1"), rounding=decimal.ROUND_HALF_UP)
 
 
 def select_tier(revenue: D, tiers: list[dict[str, Any]] | None = None) -> dict[str, Any]:
@@ -134,10 +143,12 @@ def calculate_job_commission(
     tier = select_tier(sale if sale > 0 else ZERO, scheme)
     floor = as_decimal(tier["penaltyBelowMargin"])
     margin = exact_margin_percent(sale, job_profit)
+    shown = shown_margin_percent(margin) if margin is not None else None
 
     no_sale = sale <= 0
     is_loss = job_profit < 0
-    below_floor = margin is not None and margin < floor
+    # Compare the printed tenth. 20.0% is not below the floor; 19.9% is.
+    below_floor = shown is not None and shown < floor
 
     raw = ZERO
     if no_sale and job_cost > 0:
@@ -172,8 +183,21 @@ def calculate_job_commission(
             raw_penalty=ZERO,
         )
 
-    if margin is None:
+    if margin is None or shown is None:
         raise ValueError("Positive-sale commission requires a defined margin")
+    # Bang on 20.0%: no penalty and no positive commission, on every tier.
+    if shown == floor:
+        return JobCommission(
+            revenue=money(sale),
+            profit=money(job_profit),
+            margin=margin,
+            commission=money(ZERO),
+            is_penalty=False,
+            rate=ZERO,
+            tier_min_revenue=as_decimal(tier["minRevenue"]),
+            penalty_below_margin=floor,
+            raw_penalty=ZERO,
+        )
     band = select_band(margin, list(tier["bands"]))
     if band is None:
         raise ValueError(

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import datetime as dt
+import decimal
 import html
 import random
 from pathlib import Path
@@ -70,11 +71,12 @@ def grokbot_src(*, inline_email: bool) -> str:
 def margin_style(margin: D | None) -> str:
     if margin is None:
         return ""
-    if margin < D("20"):
+    shown = margin.quantize(D("0.1"), rounding=decimal.ROUND_HALF_UP)
+    if shown < D("20"):
         return "background:#f8d7da;color:#721c24;font-weight:700;"
-    if margin < D("35"):
+    if shown < D("35"):
         return "background:#fff3cd;color:#856404;font-weight:700;"
-    if margin > D("45"):
+    if shown > D("45"):
         return "background:#d4edda;color:#155724;font-weight:700;"
     return ""
 

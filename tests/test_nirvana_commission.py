@@ -173,6 +173,46 @@ class RateAndTierTest(unittest.TestCase):
         self.assertEqual(calculate_job_commission("1500", profit).rate, D("0.03"))
         self.assertFalse(calculate_job_commission("1500", D("1500") * D("0.25")).is_penalty)
 
+    def test_shown_20_percent_is_zero_on_every_tier(self) -> None:
+        for sale in ("1500", "3000", "8000"):
+            result = calculate_job_commission(sale, D(sale) * D("0.20"))
+            self.assertEqual(result.commission, D("0.00"), sale)
+            self.assertFalse(result.is_penalty, sale)
+            self.assertEqual(result.rate, D("0"), sale)
+
+    def test_shown_19_9_and_lower_is_a_penalty_on_every_tier(self) -> None:
+        for sale in ("1500", "3000", "8000"):
+            result = calculate_job_commission(sale, D(sale) * D("0.199"))
+            self.assertTrue(result.is_penalty, sale)
+            self.assertLess(result.commission, D("0"), sale)
+
+    def test_margin_that_prints_as_20_0_is_not_a_penalty_or_a_positive(self) -> None:
+        # 19.95% and 20.04% both print as 20.0%.
+        for margin in ("0.1995", "0.2004"):
+            result = calculate_job_commission("3000", D("3000") * D(margin))
+            self.assertEqual(result.commission, D("0.00"), margin)
+            self.assertFalse(result.is_penalty, margin)
+
+    def test_margin_that_prints_as_19_9_is_a_penalty(self) -> None:
+        result = calculate_job_commission("1500", D("1500") * D("0.1994"))
+        self.assertTrue(result.is_penalty)
+        self.assertLess(result.commission, D("0"))
+
+    def test_just_above_shown_20_keeps_the_tier_rate(self) -> None:
+        # 20.05% prints as 20.1% and is already clear of the zero line.
+        small = calculate_job_commission("1500", D("1500") * D("0.2005"))
+        self.assertEqual(small.commission, D("0.00"))
+        self.assertEqual(small.rate, D("0"))
+        self.assertFalse(small.is_penalty)
+        middle = calculate_job_commission("3000", D("3000") * D("0.2005"))
+        self.assertEqual(middle.rate, D("0.03"))
+        self.assertGreater(middle.commission, D("0"))
+        self.assertFalse(middle.is_penalty)
+        large = calculate_job_commission("8000", D("8000") * D("0.2005"))
+        self.assertEqual(large.rate, D("0.04"))
+        self.assertGreater(large.commission, D("0"))
+        self.assertFalse(large.is_penalty)
+
     def test_penalty_caps(self) -> None:
         self.assertEqual(MAX_JOB_PENALTY, D("30"))
         self.assertEqual(SMALL_JOB_SALE, D("150"))
