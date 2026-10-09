@@ -23,10 +23,7 @@ LEDGER = Path("/tmp/manager_commission/send-ledger.json")
 
 
 def subject_for(report: ManagerReport) -> str:
-    return (
-        f"Grokbot Manager Commission Scorecard — {report.company_name} — "
-        f"{report.manager_name} — {report.month_label}"
-    )
+    return f"Grokbot Manager Commission Scorecard — {report.heading} — {report.month_label}"
 
 
 def parse_addresses(value: str) -> list[str]:

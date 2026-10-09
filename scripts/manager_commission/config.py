@@ -22,6 +22,7 @@ from scripts.nirvana_commission.settings import MONTHLY_MIN_PROFIT as NIRVANA_ST
 
 # --- Change these to retarget the scorecard ---------------------------------
 COMPANY = "Nirvana"
+SCORECARD_HEADING = "Nirvana Management"
 MANAGER_NAME = "Harry Thripp"
 MANAGER_EMAIL = "daniel.dwyer123@gmail.com"
 CC_EMAIL = "daniel.dwyer@nirvana-group.uk"
@@ -33,6 +34,7 @@ REPORT_TIMEZONE = "Europe/London"
 DELIVERY_MODE = "preview"
 
 # Aquilo manager is configurable. Leave blank rather than invent a name.
+AQUILO_SCORECARD_HEADING = "Aquilo Management"
 AQUILO_MANAGER_NAME = ""
 AQUILO_MANAGER_EMAIL = ""
 AQUILO_CC_EMAIL = ""
@@ -100,6 +102,7 @@ def company_key(name: str) -> str:
 class ManagerTarget:
     company_key: str
     company_name: str
+    heading: str
     manager_name: str
     manager_email: str
     cc_email: str
@@ -113,11 +116,13 @@ def target_for(company: str, env: Mapping[str, str] | None = None) -> ManagerTar
     key = company_key(company)
     if key == "nirvana":
         name = "Nirvana"
+        heading = _clean(SCORECARD_HEADING) or "Nirvana Management"
         manager = _clean(MANAGER_NAME)
         email = _clean(MANAGER_EMAIL)
         script_cc = CC_EMAIL
     else:
         name = "Aquilo"
+        heading = _clean(AQUILO_SCORECARD_HEADING) or "Aquilo Management"
         manager = _clean(AQUILO_MANAGER_NAME)
         email = _clean(AQUILO_MANAGER_EMAIL)
         script_cc = AQUILO_CC_EMAIL
@@ -137,6 +142,7 @@ def target_for(company: str, env: Mapping[str, str] | None = None) -> ManagerTar
     return ManagerTarget(
         company_key=key,
         company_name=name,
+        heading=heading,
         manager_name=manager,
         manager_email=email,
         cc_email=resolve_cc(env, script_cc=script_cc),

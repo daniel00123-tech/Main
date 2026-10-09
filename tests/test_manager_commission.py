@@ -162,7 +162,7 @@ class FormulaTest(unittest.TestCase):
         staff = person("Olivia Blakeway", net="100", qualified=True, profit="11000", sales="20000")
         self.assertEqual(manager_contribution(staff, MANAGER_COMMISSION_RATE), D("25.00"))
 
-    def test_unqualified_positive_provisional_is_ignored(self) -> None:
+    def test_unqualified_net_still_builds_the_manager_share(self) -> None:
         staff = person(
             "Amy Marshall",
             net="100",
@@ -170,12 +170,13 @@ class FormulaTest(unittest.TestCase):
             profit="1000",
             jobs=[job_row(1, "100")],
         )
-        self.assertEqual(manager_contribution(staff, MANAGER_COMMISSION_RATE), ZERO)
+        self.assertEqual(manager_contribution(staff, MANAGER_COMMISSION_RATE), D("25.00"))
+        self.assertEqual(staff.qualified, False)
 
     def test_unqualified_negative_is_twenty_five_percent(self) -> None:
         staff = person(
             "Hazel Davey",
-            net="0",
+            net="-30",
             qualified=False,
             jobs=[job_row(2, "-30")],
         )
@@ -205,10 +206,11 @@ class FormulaTest(unittest.TestCase):
         built, _html = report_from(staff)
         by_name = {line.name: line.contribution for line in built.staff_lines}
         self.assertEqual(by_name["Abi Clements"], D("25.00"))
-        self.assertEqual(by_name["Amy Marshall"], ZERO)
+        self.assertEqual(by_name["Amy Marshall"], D("20.00"))
         self.assertEqual(by_name["Olivia Blakeway"], D("-7.50"))
-        self.assertEqual(by_name["Hazel Davey"], D("-7.50"))
-        self.assertEqual(built.running_bonus, D("10.00"))
+        self.assertEqual(by_name["Hazel Davey"], D("2.50"))
+        self.assertEqual(built.running_bonus, D("40.00"))
+        self.assertEqual(built.staff_lines[1].status, "Not qualified")
         self.assertEqual(built.qualified_count, 1)
         self.assertEqual(built.team_size, 4)
 
@@ -344,11 +346,11 @@ class NirvanaEngineTest(unittest.TestCase):
         self.assertEqual(built.payable_bonus, ZERO)
         self.assertEqual(built.manager_status, "Not qualified")
         self.assertGreater(built.running_bonus, ZERO)
-        self.assertEqual(len(built.priorities), 3)
+        self.assertEqual(len(built.priorities), 2)
         self.assertIn("GR/102", built.priorities[0])
         self.assertIn("GR/103", built.priorities[0])
         self.assertIn("Olivia Blakeway", built.priorities[1])
-        self.assertIn("GR/107", built.priorities[2])
+        self.assertNotIn("Anomalies and excluded work", html)
 
     def test_unallocated_profit_matches_the_engine_row(self) -> None:
         owned_jobs = [completed(1, 201, ABI, "Abi Clements")]
@@ -442,7 +444,7 @@ class DeliveryTest(unittest.TestCase):
         self.assertEqual(recipients, ["daniel.dwyer123@gmail.com"])
         self.assertEqual(
             subject_for(built),
-            "Grokbot Manager Commission Scorecard — Nirvana — Harry Thripp — September 2026",
+            "Grokbot Manager Commission Scorecard — Nirvana Management — September 2026",
         )
         self.assertIn(built.period_id, html)
         for part in root.walk():
@@ -518,7 +520,10 @@ class HtmlScorecardTest(unittest.TestCase):
         self.assertIn("-£7.50", html)
         self.assertEqual(built.negative_staff_total, D("-30.00"))
         self.assertEqual(built.negative_manager_total, D("-7.50"))
-        self.assertEqual(built.running_bonus, D("-7.50"))
+        self.assertEqual(built.running_bonus, D("17.50"))
+        self.assertIn("Nirvana Management", html)
+        self.assertNotIn("Anomalies and excluded work", html)
+        self.assertNotIn("Harry Thripp", html)
         self.assertIn("Staff performance", html)
         self.assertIn("Manager bonus reconciliation", html)
         self.assertIn("Grokbot management priorities", html)

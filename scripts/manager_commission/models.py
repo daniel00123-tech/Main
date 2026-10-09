@@ -110,6 +110,7 @@ class Reconciliation:
 @dataclass
 class ManagerReport:
     company_name: str
+    heading: str
     company_key: str
     manager_name: str
     manager_email: str

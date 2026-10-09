@@ -28,14 +28,13 @@ def staff_negative_commission(staff: StaffResult) -> D:
 
 
 def manager_contribution(staff: StaffResult, rate: D) -> D:
-    """25% of qualified net commission, or 25% of unqualified negative adjustments.
+    """25% of net running commission, including while the person is below their threshold.
 
-    Qualified net commission already includes that person's job penalties.
-    Those penalties are not applied again. Unqualified positive commission is ignored.
+    Net running commission already includes that person's job penalties, so those
+    penalties are not applied again. The qualification status stays separate:
+    the contribution shown is the amount building.
     """
-    if staff.qualified:
-        return money(staff.net_running_commission * rate)
-    return money(staff_negative_commission(staff) * rate)
+    return money(staff.net_running_commission * rate)
 
 
 def payable_bonus(running: D, company_profit: D, gate: D) -> D:
@@ -263,7 +262,8 @@ def assemble_report(
             )
         )
     attention.sort(key=lambda item: (-abs(item.sale), item.reference))
-    priorities = _priorities(lines, negative, attention)
+    # Excluded work stays in the audit. It is not a management priority on the email.
+    priorities = _priorities(lines, negative, [])
     reconciliation = Reconciliation(
         qualified_staff_net=qualified_net,
         unqualified_negative=unqualified_negative,
@@ -277,6 +277,7 @@ def assemble_report(
     )
     return ManagerReport(
         company_name=target.company_name,
+        heading=target.heading,
         company_key=target.company_key,
         manager_name=target.manager_name,
         manager_email=target.manager_email,

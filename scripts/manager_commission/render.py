@@ -169,9 +169,8 @@ def render_email(report: ManagerReport, *, inline_email: bool = True) -> str:
     else:
         negative_section = f"""
         <p style="margin:0 0 10px;font-size:14px;line-height:1.5;color:#243040;">
-          Every completed job group with negative staff commission is listed, including account managers who have not qualified.
-          Where someone has qualified, the deduction is already inside their net commission and is not applied again.
-          Where they have not qualified, only the negative amount is in the manager bonus.
+          Every completed job group with negative staff commission is listed.
+          That deduction is already inside the person's net running commission and in the manager contribution above. It is not applied again.
         </p>
         <table cellpadding="0" cellspacing="0" border="1" style="{TABLE}margin:0 0 8px;">
           <thead><tr>
@@ -192,23 +191,6 @@ def render_email(report: ManagerReport, *, inline_email: bool = True) -> str:
           </tbody>
         </table>
         """
-    if report.attention:
-        attention_section = f"""
-        <table cellpadding="0" cellspacing="0" border="1" style="{TABLE}margin:0 0 8px;">
-          <thead><tr>
-            {_th("Group Reference")}{_th("Owner")}{_th("Sales")}{_th("Estimated Profit")}{_th("Reason")}
-          </tr></thead>
-          <tbody>{''.join(_attention_row(item) for item in report.attention)}</tbody>
-        </table>
-        <p style="margin:0 0 22px;font-size:13px;color:#243040;">
-          {_esc(str(len(report.attention)))} excluded {_esc('job' if len(report.attention) == 1 else 'jobs')},
-          invoiced {_esc(gbp(report.attention_value))}. These are not in the company profit total.
-        </p>
-        """
-    else:
-        attention_section = (
-            "<p style='margin:0 0 22px;font-size:14px;color:#243040;'>No excluded jobs this month.</p>"
-        )
     if report.priorities:
         items = "".join(
             f"<li style='margin:0 0 8px;'>{_esc(text)}</li>" for text in report.priorities
@@ -249,7 +231,7 @@ def render_email(report: ManagerReport, *, inline_email: bool = True) -> str:
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Grokbot Manager Scorecard {_esc(report.company_name)} {_esc(report.month_label)}</title>
+  <title>Grokbot Manager Scorecard {_esc(report.heading)} {_esc(report.month_label)}</title>
 </head>
 <body style="margin:0;padding:0;background:#e8eef5;">
   <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#e8eef5;">
@@ -266,8 +248,8 @@ def render_email(report: ManagerReport, *, inline_email: bool = True) -> str:
                       <td style="padding-right:12px;"><img src="{_esc(icon)}" width="52" height="52" alt="Grokbot" style="display:block;border:0;width:52px;height:52px;"></td>
                       <td>
                         <p style="margin:0 0 4px;font-size:12px;letter-spacing:0.08em;text-transform:uppercase;color:#d7e3f2;">Grokbot Manager Scorecard</p>
-                        <p style="margin:0 0 3px;font-size:20px;font-weight:700;color:#ffffff;">{_esc(report.company_name)}</p>
-                        <p style="margin:0;font-size:14px;color:#d7e3f2;">{_esc(report.manager_name)} · {_esc(report.month_label)} · {_esc(report.timezone)}</p>
+                        <p style="margin:0 0 3px;font-size:20px;font-weight:700;color:#ffffff;">{_esc(report.heading)}</p>
+                        <p style="margin:0;font-size:14px;color:#d7e3f2;">{_esc(report.month_label)} · {_esc(report.timezone)}</p>
                       </td>
                     </tr></table>
                   </td>
@@ -330,13 +312,9 @@ def render_email(report: ManagerReport, *, inline_email: bool = True) -> str:
               <p style="margin:0 0 8px;font-size:18px;font-weight:700;color:#721c24;">Negative jobs for management review</p>
               {negative_section}
 
-              <p style="margin:0 0 8px;font-size:18px;font-weight:700;color:#856404;">Anomalies and excluded work</p>
-              {attention_section}
-
               <p style="margin:0 0 8px;font-size:18px;font-weight:700;color:{NAVY};">Manager bonus reconciliation</p>
               <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 8px;">
-                {_kv("Qualified staff net commission eligible for manager share", gbp(report.reconciliation.qualified_staff_net))}
-                {_kv("Negative adjustments from unqualified staff", gbp(report.reconciliation.unqualified_negative))}
+                {_kv("Staff net running commission", gbp(report.staff_commission))}
                 {_kv(f"Manager {rate_label} share", gbp(report.reconciliation.manager_share))}
                 {_kv("Manager monthly gross profit", gbp(report.reconciliation.company_profit))}
                 {_kv("Required gross profit", gbp_whole(report.reconciliation.required_profit))}
@@ -350,7 +328,7 @@ def render_email(report: ManagerReport, *, inline_email: bool = True) -> str:
               <p style="margin:22px 0 8px;font-size:18px;font-weight:700;color:{NAVY};">Grokbot management priorities</p>
               {priority_section}
               {notes}
-              <p style="margin:18px 0 0;font-size:12px;color:#5b6775;">Period {_esc(report.period_id)}. Prepared for {_esc(report.manager_name)} only.</p>
+              <p style="margin:18px 0 0;font-size:12px;color:#5b6775;">Period {_esc(report.period_id)}. {_esc(report.heading)}.</p>
             </td>
           </tr>
         </table>
